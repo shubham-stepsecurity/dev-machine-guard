@@ -42,7 +42,7 @@ set -euo pipefail
 # SECTION 2: VERSION AND CLI DEFAULTS
 #==============================================================================
 
-AGENT_VERSION="1.8.1"
+AGENT_VERSION="1.8.2"
 
 # Output configuration (set by CLI flags)
 OUTPUT_FORMAT="pretty"  # pretty | json | html
