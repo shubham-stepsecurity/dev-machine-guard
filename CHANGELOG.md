@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 See [VERSIONING.md](VERSIONING.md) for why the version starts at 1.8.1.
 
+## [1.8.2] - 2026-03-17
+
+### Added
+- `--search-dirs DIR [DIR...]` flag to scan specific directories instead of `$HOME` (replaces default; repeatable)
+  - Accepts multiple directories in a single flag: `--search-dirs /tmp /opt /var`
+  - Supports repeated use: `--search-dirs /tmp --search-dirs /opt`
+  - Quoted paths with spaces work: `--search-dirs "/path/with spaces"`
+
 ## [1.8.1] - 2026-03-10
 
 First open-source release. The scanning engine was previously an internal enterprise tool (v1.0.0-v1.8.1) running in production. This release adds community mode for local-only scanning while keeping the enterprise codebase intact.
@@ -36,4 +44,5 @@ First open-source release. The scanning engine was previously an internal enterp
 - Execution log capture and base64 encoding
 - Instance locking to prevent concurrent runs
 
+[1.8.2]: https://github.com/step-security/dev-machine-guard/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/step-security/dev-machine-guard/releases/tag/v1.8.1
