@@ -9,11 +9,10 @@ jobs:
   release:
     name: Build, Sign & Release
     runs-on: ubuntu-latest
-    environment: release
     permissions:
-      contents: write       # create tag, release, and upload assets
-      id-token: write       # Sigstore OIDC keyless signing
-      attestations: write   # SLSA build provenance
+      contents: write # create tag, release, and upload assets
+      id-token: write # OIDC token for cosign keyless signing and build provenance
+      attestations: write # SLSA build provenance
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -23,13 +22,15 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
 
-      - name: Extract version from script
+      - name: Extract version from source
         id: version
         run: |
-          version=$(grep -m1 '^AGENT_VERSION=' stepsecurity-dev-machine-guard.sh | sed 's/AGENT_VERSION="//;s/"//')
+          version=$(grep -m1 'Version.*=' internal/buildinfo/version.go | sed 's/.*"\(.*\)".*/\1/')
           if [ -z "$version" ]; then
-            echo "::error::Could not extract AGENT_VERSION from script"
+            echo "::error::Could not extract Version from internal/buildinfo/version.go"
             exit 1
           fi
           tag="v${version}"
@@ -40,32 +41,9 @@ jobs:
       - name: Check tag does not already exist
         run: |
           if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump AGENT_VERSION in the script before releasing."
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump Version in internal/buildinfo/version.go before releasing."
             exit 1
           fi
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-
-      - name: Sign script with Sigstore (keyless)
-        run: |
-          cosign sign-blob stepsecurity-dev-machine-guard.sh \
-            --bundle stepsecurity-dev-machine-guard.sh.bundle \
-            --yes
-
-      - name: Verify signature
-        run: |
-          cosign verify-blob stepsecurity-dev-machine-guard.sh \
-            --bundle stepsecurity-dev-machine-guard.sh.bundle \
-            --certificate-identity-regexp "github.com/step-security/dev-machine-guard" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-
-      - name: Generate checksums
-        run: |
-          sha256sum stepsecurity-dev-machine-guard.sh > checksums.txt
-          sha256sum stepsecurity-dev-machine-guard.sh.bundle >> checksums.txt
-          echo "Checksums:"
-          cat checksums.txt
 
       - name: Create tag
         run: |
@@ -74,18 +52,87 @@ jobs:
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
-      - name: Create GitHub Release
-        uses: step-security/action-gh-release@d45511d7589f080cf54961ff056b9705a74fd160 # v2.5.0
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
-          files: |
-            stepsecurity-dev-machine-guard.sh
-            stepsecurity-dev-machine-guard.sh.bundle
-            checksums.txt
+          go-version-file: go.mod
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Prepare release artifacts for signing
+        run: |
+          # Copy binaries to match the exact names users download from the release.
+          # GoReleaser uploads as name_template (e.g. stepsecurity-dev-machine-guard_darwin_amd64)
+          # but keeps them in build subdirs locally. We copy to dist/ with release names
+          # so cosign signs the same bytes users verify against.
+          AMD64_SRC=$(find dist -type f -name 'stepsecurity-dev-machine-guard' -path '*darwin_amd64*' | head -1)
+          ARM64_SRC=$(find dist -type f -name 'stepsecurity-dev-machine-guard' -path '*darwin_arm64*' | head -1)
+
+          for label in "amd64:${AMD64_SRC}" "arm64:${ARM64_SRC}"; do
+            name="${label%%:*}"
+            path="${label#*:}"
+            if [ -z "$path" ] || [ ! -f "$path" ]; then
+              echo "::error::Binary not found for ${name}"
+              find dist -type f
+              exit 1
+            fi
+          done
+
+          cp "$AMD64_SRC" dist/stepsecurity-dev-machine-guard_darwin_amd64
+          cp "$ARM64_SRC" dist/stepsecurity-dev-machine-guard_darwin_arm64
+          echo "Prepared release artifacts for signing"
+
+      - name: Sign artifacts with Sigstore (keyless)
+        run: |
+          cosign sign-blob dist/stepsecurity-dev-machine-guard_darwin_amd64 \
+            --bundle dist/stepsecurity-dev-machine-guard_darwin_amd64.bundle --yes
+          cosign sign-blob dist/stepsecurity-dev-machine-guard_darwin_arm64 \
+            --bundle dist/stepsecurity-dev-machine-guard_darwin_arm64.bundle --yes
+          cosign sign-blob stepsecurity-dev-machine-guard.sh \
+            --bundle dist/stepsecurity-dev-machine-guard.sh.bundle --yes
+
+      - name: Generate checksums
+        run: |
+          # Separate checksum file for cosign-signed artifacts (script + bundles).
+          # GoReleaser already generates checksums for the Go binaries in its own SHA256SUMS file.
+          sha256sum dist/stepsecurity-dev-machine-guard_darwin_amd64 > dist/cosign-checksums.txt
+          sha256sum dist/stepsecurity-dev-machine-guard_darwin_arm64 >> dist/cosign-checksums.txt
+          sha256sum stepsecurity-dev-machine-guard.sh >> dist/cosign-checksums.txt
+
+      - name: Upload signature bundles and checksums to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ steps.version.outputs.tag }}" \
+            dist/stepsecurity-dev-machine-guard_darwin_amd64.bundle \
+            dist/stepsecurity-dev-machine-guard_darwin_arm64.bundle \
+            dist/stepsecurity-dev-machine-guard.sh.bundle \
+            dist/cosign-checksums.txt \
+            --clobber
+
+      - name: Mark release as immutable (not a draft, not a prerelease)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ steps.version.outputs.tag }}" \
+            --draft=false \
+            --prerelease=false \
+            --latest
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: stepsecurity-dev-machine-guard.sh
+          subject-path: |
+            dist/stepsecurity-dev-machine-guard_darwin_amd64
+            dist/stepsecurity-dev-machine-guard_darwin_arm64
+            stepsecurity-dev-machine-guard.sh

@@ -17,5 +17,9 @@
 !docs/**/*.html
 !images/**/*.html
 
+# Go build artifacts
+/stepsecurity-dev-machine-guard
+dist/
+
 # Temporary files
 todo-remove/
