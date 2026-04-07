@@ -7,12 +7,12 @@ permissions: {}
 
 jobs:
   release:
-    name: Build, Sign & Release
+    name: Build & Draft Release
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create tag, release, and upload assets
-      id-token: write # OIDC token for cosign keyless signing and build provenance
-      attestations: write # SLSA build provenance
+      contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -36,12 +36,11 @@ jobs:
           tag="v${version}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Detected version: ${version} (tag: ${tag})"
 
       - name: Check tag does not already exist
         run: |
           if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump Version in internal/buildinfo/version.go before releasing."
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists."
             exit 1
           fi
 
@@ -69,70 +68,25 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
 
-      - name: Prepare release artifacts for signing
+      - name: Sign artifacts with Sigstore
         run: |
-          # Copy binaries to match the exact names users download from the release.
-          # GoReleaser uploads as name_template (e.g. stepsecurity-dev-machine-guard_darwin_amd64)
-          # but keeps them in build subdirs locally. We copy to dist/ with release names
-          # so cosign signs the same bytes users verify against.
-          AMD64_SRC=$(find dist -type f -name 'stepsecurity-dev-machine-guard' -path '*darwin_amd64*' | head -1)
-          ARM64_SRC=$(find dist -type f -name 'stepsecurity-dev-machine-guard' -path '*darwin_arm64*' | head -1)
-
-          for label in "amd64:${AMD64_SRC}" "arm64:${ARM64_SRC}"; do
-            name="${label%%:*}"
-            path="${label#*:}"
-            if [ -z "$path" ] || [ ! -f "$path" ]; then
-              echo "::error::Binary not found for ${name}"
-              find dist -type f
-              exit 1
-            fi
-          done
-
-          cp "$AMD64_SRC" dist/stepsecurity-dev-machine-guard_darwin_amd64
-          cp "$ARM64_SRC" dist/stepsecurity-dev-machine-guard_darwin_arm64
-          echo "Prepared release artifacts for signing"
-
-      - name: Sign artifacts with Sigstore (keyless)
-        run: |
-          cosign sign-blob dist/stepsecurity-dev-machine-guard_darwin_amd64 \
-            --bundle dist/stepsecurity-dev-machine-guard_darwin_amd64.bundle --yes
-          cosign sign-blob dist/stepsecurity-dev-machine-guard_darwin_arm64 \
-            --bundle dist/stepsecurity-dev-machine-guard_darwin_arm64.bundle --yes
+          ARCHIVE=$(find dist -name 'stepsecurity-dev-machine-guard-*-darwin.tar.gz' | head -1)
+          cosign sign-blob "$ARCHIVE" --bundle "${ARCHIVE}.bundle" --yes
           cosign sign-blob stepsecurity-dev-machine-guard.sh \
             --bundle dist/stepsecurity-dev-machine-guard.sh.bundle --yes
 
-      - name: Generate checksums
-        run: |
-          # Separate checksum file for cosign-signed artifacts (script + bundles).
-          # GoReleaser already generates checksums for the Go binaries in its own SHA256SUMS file.
-          sha256sum dist/stepsecurity-dev-machine-guard_darwin_amd64 > dist/cosign-checksums.txt
-          sha256sum dist/stepsecurity-dev-machine-guard_darwin_arm64 >> dist/cosign-checksums.txt
-          sha256sum stepsecurity-dev-machine-guard.sh >> dist/cosign-checksums.txt
-
-      - name: Upload signature bundles and checksums to release
+      - name: Upload cosign bundles
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ steps.version.outputs.tag }}" \
-            dist/stepsecurity-dev-machine-guard_darwin_amd64.bundle \
-            dist/stepsecurity-dev-machine-guard_darwin_arm64.bundle \
+            dist/stepsecurity-dev-machine-guard-*-darwin.tar.gz.bundle \
             dist/stepsecurity-dev-machine-guard.sh.bundle \
-            dist/cosign-checksums.txt \
             --clobber
-
-      - name: Mark release as immutable (not a draft, not a prerelease)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release edit "${{ steps.version.outputs.tag }}" \
-            --draft=false \
-            --prerelease=false \
-            --latest
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
-            dist/stepsecurity-dev-machine-guard_darwin_amd64
-            dist/stepsecurity-dev-machine-guard_darwin_arm64
+            dist/stepsecurity-dev-machine-guard-*-darwin.tar.gz
             stepsecurity-dev-machine-guard.sh
