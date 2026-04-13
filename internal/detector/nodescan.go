@@ -190,7 +190,7 @@ func (s *NodeScanner) ScanProjects(ctx context.Context, searchDirs []string) []m
 				return nil
 			}
 			projectDir := filepath.Dir(path)
-			if strings.Contains(projectDir, "/node_modules/") {
+			if isInsideNodeModules(projectDir) {
 				return nil
 			}
 			// Get modification time for sorting
@@ -321,4 +321,12 @@ func (s *NodeScanner) getOutput(ctx context.Context, binary string, args ...stri
 		return ""
 	}
 	return strings.TrimSpace(stdout)
+}
+
+// isInsideNodeModules returns true if the path contains a node_modules component.
+// Uses strings.ReplaceAll instead of filepath.ToSlash so the check works
+// regardless of the host OS (important for cross-platform mock tests).
+func isInsideNodeModules(projectDir string) bool {
+	normalized := strings.ReplaceAll(projectDir, "\\", "/")
+	return strings.Contains(normalized, "/node_modules/")
 }

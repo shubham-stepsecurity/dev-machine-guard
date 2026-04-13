@@ -157,10 +157,23 @@ func (d *AICLIDetector) getVersion(ctx context.Context, spec cliToolSpec, binary
 	if len(lines) > 0 {
 		v := strings.TrimSpace(lines[0])
 		if v != "" {
-			return v
+			return cleanVersionString(v)
 		}
 	}
 	return "unknown"
+}
+
+// cleanVersionString strips a leading tool name prefix from version output.
+// e.g. "codex-cli 0.118.0" -> "0.118.0", "aider 0.86.2" -> "0.86.2"
+func cleanVersionString(v string) string {
+	parts := strings.Fields(v)
+	for _, p := range parts {
+		trimmed := strings.TrimLeft(p, "v")
+		if len(trimmed) > 0 && trimmed[0] >= '0' && trimmed[0] <= '9' {
+			return p
+		}
+	}
+	return v
 }
 
 func (d *AICLIDetector) findConfigDir(spec cliToolSpec, homeDir string) string {

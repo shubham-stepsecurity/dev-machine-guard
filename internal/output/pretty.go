@@ -36,7 +36,11 @@ func Pretty(w io.Writer, result *model.ScanResult, colorMode string) error {
 	fmt.Fprintf(w, "  %s%sDEVICE%s\n", c.purple, c.bold, c.reset)
 	fmt.Fprintf(w, "    %-16s %s\n", "Hostname", result.Device.Hostname)
 	fmt.Fprintf(w, "    %-16s %s\n", "Serial", result.Device.SerialNumber)
-	fmt.Fprintf(w, "    %-16s %s\n", "macOS", result.Device.OSVersion)
+	osLabel := "macOS"
+	if result.Device.Platform == "windows" {
+		osLabel = "Windows"
+	}
+	fmt.Fprintf(w, "    %-16s %s\n", osLabel, result.Device.OSVersion)
 	fmt.Fprintf(w, "    %-16s %s\n", "User", result.Device.UserIdentity)
 	fmt.Fprintln(w)
 
