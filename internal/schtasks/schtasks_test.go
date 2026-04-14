@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/step-security/dev-machine-guard/internal/config"
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/progress"
 )
@@ -98,21 +97,47 @@ func TestResolveLogDir_Admin(t *testing.T) {
 	}
 }
 
-func TestInstall_CustomFrequency(t *testing.T) {
-	origFreq := config.ScanFrequencyHours
-	t.Cleanup(func() { config.ScanFrequencyHours = origFreq })
-	config.ScanFrequencyHours = "6"
+func TestBuildCreateArgs_CustomFrequency(t *testing.T) {
+	args := buildCreateArgs(`C:\agent.exe`, `C:\logs`, 6, false)
 
-	mock := executor.NewMock()
-	mock.SetGOOS("windows")
-	mock.SetIsRoot(false)
-	mock.SetHomeDir(`C:\Users\testuser`)
-	// Task doesn't exist
-	mock.SetCommand("", "ERROR: not found", 1, "schtasks", "/query", "/tn", taskName)
+	// Find the /mo argument and check its value
+	foundMo := false
+	for i, a := range args {
+		if a == "/mo" && i+1 < len(args) {
+			foundMo = true
+			if args[i+1] != "6" {
+				t.Errorf("expected /mo 6, got /mo %s", args[i+1])
+			}
+		}
+	}
+	if !foundMo {
+		t.Error("expected /mo argument in schtasks create args")
+	}
+}
 
-	// Install will fail at os.Executable or schtasks create, but we're testing
-	// that the frequency is parsed correctly via the resolveLogDir and config paths.
-	// A full integration test requires the real binary on Windows.
-	_ = Install(mock, newTestLogger())
-	// If we got past the config parsing without panic, the frequency was handled correctly.
+func TestBuildCreateArgs_Admin(t *testing.T) {
+	args := buildCreateArgs(`C:\agent.exe`, `C:\logs`, 4, true)
+
+	foundRU := false
+	for i, a := range args {
+		if a == "/ru" && i+1 < len(args) {
+			foundRU = true
+			if args[i+1] != "SYSTEM" {
+				t.Errorf("expected /ru SYSTEM, got /ru %s", args[i+1])
+			}
+		}
+	}
+	if !foundRU {
+		t.Error("expected /ru SYSTEM for admin install")
+	}
+}
+
+func TestBuildCreateArgs_NonAdmin(t *testing.T) {
+	args := buildCreateArgs(`C:\agent.exe`, `C:\logs`, 4, false)
+
+	for _, a := range args {
+		if a == "/ru" {
+			t.Error("expected no /ru argument for non-admin install")
+		}
+	}
 }

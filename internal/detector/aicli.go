@@ -164,7 +164,9 @@ func (d *AICLIDetector) getVersion(ctx context.Context, spec cliToolSpec, binary
 }
 
 // cleanVersionString strips a leading tool name prefix from version output.
-// e.g. "codex-cli 0.118.0" -> "0.118.0", "aider 0.86.2" -> "0.86.2"
+// It finds the first token that looks like a version number (starts with a digit
+// or "v" followed by a digit) and returns it, preserving any "v" prefix.
+// e.g. "codex-cli 0.118.0" -> "0.118.0", "aider 0.86.2" -> "0.86.2", "v1.2.3" -> "v1.2.3"
 func cleanVersionString(v string) string {
 	parts := strings.Fields(v)
 	for _, p := range parts {

@@ -113,7 +113,14 @@ scp_cmd() {
     if [[ -n "$KEY" ]]; then
         scp $SSH_OPTS -i "$KEY" "$src" "${USER}@${HOST}:${dst}"
     elif [[ -n "$PASSWORD" ]]; then
+        if ! command -v sshpass &>/dev/null; then
+            echo "Error: sshpass required for password auth (brew install sshpass / apt install sshpass)" >&2
+            exit 1
+        fi
         SSHPASS="$PASSWORD" sshpass -e scp $SSH_OPTS "$src" "${USER}@${HOST}:${dst}"
+    else
+        echo "Error: provide --key or set DEPLOY_PASSWORD" >&2
+        exit 1
     fi
 }
 

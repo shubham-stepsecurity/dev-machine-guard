@@ -42,20 +42,14 @@ func Install(exec executor.Executor, log *progress.Logger) error {
 		return fmt.Errorf("creating log directory: %w", err)
 	}
 
-	// Build the task command with output redirection
-	taskCmd := fmt.Sprintf(`cmd /c "\"%s\" send-telemetry >> \"%s\agent.log\" 2>> \"%s\agent.error.log\""`,
-		binaryPath, logDir, logDir)
-
-	// Build schtasks arguments
-	args := []string{"/create", "/tn", taskName, "/tr", taskCmd,
-		"/sc", "HOURLY", "/mo", strconv.Itoa(hours), "/f"}
-	if exec.IsRoot() {
-		args = append(args, "/ru", "SYSTEM")
-	}
+	args := buildCreateArgs(binaryPath, logDir, hours, exec.IsRoot())
 
 	_, stderr, exitCode, err := exec.Run(ctx, "schtasks", args...)
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("failed to create scheduled task: %s", stderr)
+	if err != nil {
+		return fmt.Errorf("failed to create scheduled task: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("failed to create scheduled task (exit code %d): %s", exitCode, stderr)
 	}
 
 	log.Progress("Windows Task Scheduler configuration completed successfully")
@@ -81,8 +75,11 @@ func Uninstall(exec executor.Executor, log *progress.Logger) error {
 
 func doUninstall(ctx context.Context, exec executor.Executor, log *progress.Logger) error {
 	_, stderr, exitCode, err := exec.Run(ctx, "schtasks", "/delete", "/tn", taskName, "/f")
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("failed to delete scheduled task: %s", stderr)
+	if err != nil {
+		return fmt.Errorf("failed to delete scheduled task: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("failed to delete scheduled task (exit code %d): %s", exitCode, stderr)
 	}
 
 	log.Progress("Removed scheduled task: %s", taskName)
@@ -93,6 +90,17 @@ func doUninstall(ctx context.Context, exec executor.Executor, log *progress.Logg
 func isConfigured(ctx context.Context, exec executor.Executor) bool {
 	_, _, exitCode, _ := exec.Run(ctx, "schtasks", "/query", "/tn", taskName)
 	return exitCode == 0
+}
+
+func buildCreateArgs(binaryPath, logDir string, hours int, isAdmin bool) []string {
+	taskCmd := fmt.Sprintf(`cmd /c "\"%s\" send-telemetry >> \"%s\agent.log\" 2>> \"%s\agent.error.log\""`,
+		binaryPath, logDir, logDir)
+	args := []string{"/create", "/tn", taskName, "/tr", taskCmd,
+		"/sc", "HOURLY", "/mo", strconv.Itoa(hours), "/f"}
+	if isAdmin {
+		args = append(args, "/ru", "SYSTEM")
+	}
+	return args
 }
 
 func resolveLogDir(exec executor.Executor) string {
