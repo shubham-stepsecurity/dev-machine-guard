@@ -215,7 +215,7 @@ else
 fi
 
 BOGUS_ERR=$("$BINARY" --bogus-flag 2>&1 || true)
-assert_contains "Invalid flag shows error" "$BOGUS_ERR" "Unknown option"
+assert_contains "Invalid flag shows error" "$BOGUS_ERR" "unknown option"
 
 #==============================================================================
 # 6. JSON schema validation
