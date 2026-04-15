@@ -105,7 +105,8 @@ func (s *NodeScanner) scanYarnGlobal(ctx context.Context) (model.NodeScanResult,
 	}
 
 	start := time.Now()
-	stdout, stderr, exitCode, _ := s.exec.RunWithTimeout(ctx, 60*time.Second, "bash", "-c", "cd '"+globalDir+"' && yarn list --json --depth=0")
+	shellCmd := "cd " + platformShellQuote(s.exec, globalDir) + " && yarn list --json --depth=0"
+	stdout, stderr, exitCode, _ := runShellCmd(ctx, s.exec, 60*time.Second, shellCmd)
 	duration := time.Since(start).Milliseconds()
 
 	errMsg := ""
@@ -189,7 +190,7 @@ func (s *NodeScanner) ScanProjects(ctx context.Context, searchDirs []string) []m
 				return nil
 			}
 			projectDir := filepath.Dir(path)
-			if strings.Contains(projectDir, "/node_modules/") {
+			if isInsideNodeModules(projectDir) {
 				return nil
 			}
 			// Get modification time for sorting
@@ -281,11 +282,11 @@ func (s *NodeScanner) scanProject(ctx context.Context, projectDir string) model.
 	}
 
 	start := time.Now()
-	shellCmd := "cd " + shellQuote(projectDir) + " && " + cmd
+	cmdStr := "cd " + platformShellQuote(s.exec, projectDir) + " && " + cmd
 	for _, a := range args {
-		shellCmd += " " + a
+		cmdStr += " " + a
 	}
-	stdout, stderr, exitCode, _ := s.exec.RunWithTimeout(ctx, 30*time.Second, "bash", "-c", shellCmd)
+	stdout, stderr, exitCode, _ := runShellCmd(ctx, s.exec, 30*time.Second, cmdStr)
 	duration := time.Since(start).Milliseconds()
 
 	errMsg := ""
@@ -322,6 +323,10 @@ func (s *NodeScanner) getOutput(ctx context.Context, binary string, args ...stri
 	return strings.TrimSpace(stdout)
 }
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+// isInsideNodeModules returns true if the path contains a node_modules component.
+// Uses strings.ReplaceAll instead of filepath.ToSlash so the check works
+// regardless of the host OS (important for cross-platform mock tests).
+func isInsideNodeModules(projectDir string) bool {
+	normalized := strings.ReplaceAll(projectDir, "\\", "/")
+	return strings.Contains(normalized, "/node_modules/")
 }

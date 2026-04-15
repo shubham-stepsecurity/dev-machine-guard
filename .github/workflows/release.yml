@@ -68,30 +68,45 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
 
-      - name: Locate binary
-        id: binary
+      - name: Locate binaries
+        id: binaries
         run: |
-          BINARY=$(find dist -type f -name '*darwin_unnotarized' | head -1)
-          if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
-            echo "::error::Binary not found"
-            find dist -type f
-            exit 1
-          fi
-          echo "path=$BINARY" >> "$GITHUB_OUTPUT"
+          DARWIN=$(find dist -type f -name '*darwin_unnotarized' | head -1)
+          WIN_AMD64=$(find dist -type f -name '*windows_amd64.exe' | head -1)
+          WIN_ARM64=$(find dist -type f -name '*windows_arm64.exe' | head -1)
+
+          for label in "darwin:${DARWIN}" "windows_amd64:${WIN_AMD64}" "windows_arm64:${WIN_ARM64}"; do
+            name="${label%%:*}"
+            path="${label#*:}"
+            if [ -z "$path" ] || [ ! -f "$path" ]; then
+              echo "::error::Binary not found for ${name}"
+              find dist -type f
+              exit 1
+            fi
+          done
+
+          echo "darwin=$DARWIN" >> "$GITHUB_OUTPUT"
+          echo "win_amd64=$WIN_AMD64" >> "$GITHUB_OUTPUT"
+          echo "win_arm64=$WIN_ARM64" >> "$GITHUB_OUTPUT"
 
       - name: Sign artifacts with Sigstore
         run: |
-          cosign sign-blob "${{ steps.binary.outputs.path }}" \
-            --bundle "${{ steps.binary.outputs.path }}.bundle" --yes
-          cosign sign-blob stepsecurity-dev-machine-guard.sh \
-            --bundle dist/stepsecurity-dev-machine-guard.sh.bundle --yes
+          for artifact in \
+            "${{ steps.binaries.outputs.darwin }}" \
+            "${{ steps.binaries.outputs.win_amd64 }}" \
+            "${{ steps.binaries.outputs.win_arm64 }}" \
+            stepsecurity-dev-machine-guard.sh; do
+            cosign sign-blob "$artifact" --bundle "${artifact}.bundle" --yes
+          done
 
       - name: Upload cosign bundles
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ steps.version.outputs.tag }}" \
-            "${{ steps.binary.outputs.path }}.bundle" \
+            "${{ steps.binaries.outputs.darwin }}.bundle" \
+            "${{ steps.binaries.outputs.win_amd64 }}.bundle" \
+            "${{ steps.binaries.outputs.win_arm64 }}.bundle" \
             dist/stepsecurity-dev-machine-guard.sh.bundle \
             --clobber
 
@@ -99,5 +114,7 @@ jobs:
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
-            ${{ steps.binary.outputs.path }}
+            ${{ steps.binaries.outputs.darwin }}
+            ${{ steps.binaries.outputs.win_amd64 }}
+            ${{ steps.binaries.outputs.win_arm64 }}
             stepsecurity-dev-machine-guard.sh

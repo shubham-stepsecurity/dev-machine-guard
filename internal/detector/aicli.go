@@ -2,6 +2,8 @@ package detector
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -121,10 +123,16 @@ func (d *AICLIDetector) Detect(ctx context.Context) []model.AITool {
 func (d *AICLIDetector) findBinary(ctx context.Context, spec cliToolSpec, homeDir string) (string, bool) {
 	for _, bin := range spec.Binaries {
 		expanded := expandTilde(bin, homeDir)
-		if strings.Contains(expanded, "/") {
-			// Absolute/relative path - check if it exists
+		if expanded != bin {
+			// Path was expanded from tilde — it's a home-relative path, check if it exists
 			if d.exec.FileExists(expanded) {
 				return expanded, true
+			}
+			// On Windows, also try with .exe suffix
+			if d.exec.GOOS() == "windows" && !strings.HasSuffix(expanded, ".exe") {
+				if d.exec.FileExists(expanded + ".exe") {
+					return expanded + ".exe", true
+				}
 			}
 			continue
 		}
@@ -149,10 +157,25 @@ func (d *AICLIDetector) getVersion(ctx context.Context, spec cliToolSpec, binary
 	if len(lines) > 0 {
 		v := strings.TrimSpace(lines[0])
 		if v != "" {
-			return v
+			return cleanVersionString(v)
 		}
 	}
 	return "unknown"
+}
+
+// cleanVersionString strips a leading tool name prefix from version output.
+// It finds the first token that looks like a version number (starts with a digit
+// or "v" followed by a digit) and returns it, preserving any "v" prefix.
+// e.g. "codex-cli 0.118.0" -> "0.118.0", "aider 0.86.2" -> "0.86.2", "v1.2.3" -> "v1.2.3"
+func cleanVersionString(v string) string {
+	parts := strings.Fields(v)
+	for _, p := range parts {
+		trimmed := strings.TrimLeft(p, "v")
+		if len(trimmed) > 0 && trimmed[0] >= '0' && trimmed[0] <= '9' {
+			return p
+		}
+	}
+	return v
 }
 
 func (d *AICLIDetector) findConfigDir(spec cliToolSpec, homeDir string) string {
@@ -167,7 +190,7 @@ func (d *AICLIDetector) findConfigDir(spec cliToolSpec, homeDir string) string {
 
 func expandTilde(path, homeDir string) string {
 	if strings.HasPrefix(path, "~/") {
-		return homeDir + path[1:]
+		return filepath.Join(homeDir, filepath.FromSlash(path[2:]))
 	}
 	return path
 }
@@ -175,7 +198,22 @@ func expandTilde(path, homeDir string) string {
 func getHomeDir(exec executor.Executor) string {
 	u, err := exec.CurrentUser()
 	if err != nil {
-		return "/tmp"
+		return os.TempDir()
 	}
 	return u.HomeDir
+}
+
+// resolveEnvPath replaces %ENVVAR% patterns in Windows-style paths using the executor.
+func resolveEnvPath(exec executor.Executor, path string) string {
+	for strings.Contains(path, "%") {
+		start := strings.Index(path, "%")
+		end := strings.Index(path[start+1:], "%")
+		if end < 0 {
+			break
+		}
+		envName := path[start+1 : start+1+end]
+		envVal := exec.Getenv(envName)
+		path = path[:start] + envVal + path[start+2+end:]
+	}
+	return filepath.FromSlash(path)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/step-security/dev-machine-guard/internal/buildinfo"
 	"github.com/step-security/dev-machine-guard/internal/cli"
@@ -11,6 +12,7 @@ import (
 	"github.com/step-security/dev-machine-guard/internal/launchd"
 	"github.com/step-security/dev-machine-guard/internal/progress"
 	"github.com/step-security/dev-machine-guard/internal/scan"
+	"github.com/step-security/dev-machine-guard/internal/schtasks"
 	"github.com/step-security/dev-machine-guard/internal/telemetry"
 )
 
@@ -84,14 +86,21 @@ func main() {
 		}
 
 	case "install":
-		fmt.Fprintf(os.Stdout, "StepSecurity Dev Machine Guard v%s\n\n", buildinfo.Version)
+		_, _ = fmt.Fprintf(os.Stdout, "StepSecurity Dev Machine Guard v%s\n\n", buildinfo.Version)
 		if !config.IsEnterpriseMode() {
 			log.Error("Enterprise configuration not found. Run '%s configure' or download the script from your StepSecurity dashboard.", os.Args[0])
 			os.Exit(1)
 		}
-		if err := launchd.Install(exec, log); err != nil {
-			log.Error("%v", err)
-			os.Exit(1)
+		if runtime.GOOS == "windows" {
+			if err := schtasks.Install(exec, log); err != nil {
+				log.Error("%v", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := launchd.Install(exec, log); err != nil {
+				log.Error("%v", err)
+				os.Exit(1)
+			}
 		}
 		log.Progress("Sending initial telemetry...")
 		fmt.Println()
@@ -101,10 +110,17 @@ func main() {
 		}
 
 	case "uninstall":
-		fmt.Fprintf(os.Stdout, "StepSecurity Dev Machine Guard v%s\n\n", buildinfo.Version)
-		if err := launchd.Uninstall(exec, log); err != nil {
-			log.Error("%v", err)
-			os.Exit(1)
+		_, _ = fmt.Fprintf(os.Stdout, "StepSecurity Dev Machine Guard v%s\n\n", buildinfo.Version)
+		if runtime.GOOS == "windows" {
+			if err := schtasks.Uninstall(exec, log); err != nil {
+				log.Error("%v", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := launchd.Uninstall(exec, log); err != nil {
+				log.Error("%v", err)
+				os.Exit(1)
+			}
 		}
 
 	default:

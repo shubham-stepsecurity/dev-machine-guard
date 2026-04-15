@@ -41,7 +41,7 @@ func HTML(outputFile string, result *model.ScanResult) error {
 	if err != nil {
 		return fmt.Errorf("creating HTML file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanTime := time.Unix(result.ScanTimestamp, 0).Format("2006-01-02 15:04:05")
 
@@ -169,7 +169,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <div class="device-grid">
   <div class="field"><span class="field-label">Hostname</span><span class="field-value">{{.Device.Hostname}}</span></div>
   <div class="field"><span class="field-label">Serial</span><span class="field-value">{{.Device.SerialNumber}}</span></div>
-  <div class="field"><span class="field-label">macOS</span><span class="field-value">{{.Device.OSVersion}}</span></div>
+  <div class="field"><span class="field-label">{{if eq .Device.Platform "windows"}}Windows{{else}}macOS{{end}}</span><span class="field-value">{{.Device.OSVersion}}</span></div>
   <div class="field"><span class="field-label">User</span><span class="field-value">{{.Device.UserIdentity}}</span></div>
 </div>
 
