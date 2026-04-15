@@ -108,23 +108,24 @@ jobs:
 
       - name: Sign artifacts with Sigstore
         run: |
-          for artifact in \
-            "${{ steps.binaries.outputs.darwin }}" \
-            "${{ steps.binaries.outputs.win_amd64 }}" \
-            "${{ steps.binaries.outputs.win_arm64 }}" \
-            stepsecurity-dev-machine-guard.sh; do
-            cosign sign-blob "$artifact" --bundle "${artifact}.bundle" --yes
-          done
+          cosign sign-blob "${{ steps.binaries.outputs.darwin }}" \
+            --bundle dist/stepsecurity-dev-machine-guard-darwin_unnotarized.bundle --yes
+          cosign sign-blob "${{ steps.binaries.outputs.win_amd64 }}" \
+            --bundle dist/stepsecurity-dev-machine-guard-windows_amd64.exe.bundle --yes
+          cosign sign-blob "${{ steps.binaries.outputs.win_arm64 }}" \
+            --bundle dist/stepsecurity-dev-machine-guard-windows_arm64.exe.bundle --yes
+          cosign sign-blob stepsecurity-dev-machine-guard.sh \
+            --bundle dist/stepsecurity-dev-machine-guard.sh.bundle --yes
 
       - name: Upload cosign bundles
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ steps.release.outputs.tag }}" \
-            "${{ steps.binaries.outputs.darwin }}.bundle" \
-            "${{ steps.binaries.outputs.win_amd64 }}.bundle" \
-            "${{ steps.binaries.outputs.win_arm64 }}.bundle" \
-            stepsecurity-dev-machine-guard.sh.bundle \
+            dist/stepsecurity-dev-machine-guard-darwin_unnotarized.bundle \
+            dist/stepsecurity-dev-machine-guard-windows_amd64.exe.bundle \
+            dist/stepsecurity-dev-machine-guard-windows_arm64.exe.bundle \
+            dist/stepsecurity-dev-machine-guard.sh.bundle \
             --clobber
 
       - name: Attest build provenance
