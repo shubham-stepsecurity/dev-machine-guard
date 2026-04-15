@@ -65,6 +65,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve draft release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GoReleaser creates draft releases under an "untagged-*" slug,
+          # so gh release upload by version tag returns 404. Look up the
+          # actual tag GitHub assigned to the draft.
+          release_tag=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | select(.draft and .name == "${{ steps.version.outputs.tag }}")] | first | .tag_name')
+          if [ -z "$release_tag" ] || [ "$release_tag" = "null" ]; then
+            echo "::error::Could not find draft release for ${{ steps.version.outputs.tag }}"
+            exit 1
+          fi
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved draft release tag: $release_tag"
+
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
 
@@ -103,7 +120,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ steps.version.outputs.tag }}" \
+          gh release upload "${{ steps.release.outputs.tag }}" \
             "${{ steps.binaries.outputs.darwin }}.bundle" \
             "${{ steps.binaries.outputs.win_amd64 }}.bundle" \
             "${{ steps.binaries.outputs.win_arm64 }}.bundle" \
