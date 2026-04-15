@@ -103,6 +103,12 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	log.Progress("OS Version: %s", dev.OSVersion)
 	log.Progress("Developer: %s", dev.UserIdentity)
 
+	// Detect logged-in user for running commands as the real user when root
+	loggedInUsername := ""
+	if loggedInUser, err := exec.LoggedInUser(); err == nil {
+		loggedInUsername = loggedInUser.Username
+	}
+
 	// Resolve search dirs
 	searchDirs := resolveSearchDirs(exec, cfg.SearchDirs)
 	fmt.Fprintln(os.Stderr)
@@ -201,7 +207,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 		fmt.Fprintln(os.Stderr)
 
 		log.Progress("Scanning globally installed packages...")
-		nodeScanner := detector.NewNodeScanner(exec, log)
+		nodeScanner := detector.NewNodeScanner(exec, log, loggedInUsername)
 		globalPkgs = nodeScanner.ScanGlobalPackages(ctx)
 		log.Progress("  Found %d global package location(s)", len(globalPkgs))
 		fmt.Fprintln(os.Stderr)
@@ -375,7 +381,7 @@ func resolveSearchDirs(exec executor.Executor, dirs []string) []string {
 	resolved := make([]string, 0, len(dirs))
 	for _, d := range dirs {
 		if d == "$HOME" {
-			u, err := exec.CurrentUser()
+			u, err := exec.LoggedInUser()
 			if err == nil {
 				d = u.HomeDir
 			}

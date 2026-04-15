@@ -196,7 +196,7 @@ func expandTilde(path, homeDir string) string {
 }
 
 func getHomeDir(exec executor.Executor) string {
-	u, err := exec.CurrentUser()
+	u, err := exec.LoggedInUser()
 	if err != nil {
 		return os.TempDir()
 	}

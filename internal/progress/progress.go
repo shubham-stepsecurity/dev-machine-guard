@@ -35,13 +35,15 @@ func (l *Logger) Progress(format string, args ...any) {
 	if l.quiet {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "\033[2m[scanning]\033[0m %s\n", fmt.Sprintf(format, args...))
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	fmt.Fprintf(os.Stderr, "\033[2m%s [scanning]\033[0m %s\n", ts, fmt.Sprintf(format, args...))
 }
 
 // Error always prints to stderr regardless of quiet mode.
 // Format: [error] message
 func (l *Logger) Error(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "\033[0;31m[error]\033[0m %s\n", fmt.Sprintf(format, args...))
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	fmt.Fprintf(os.Stderr, "%s \033[0;31m[error]\033[0m %s\n", ts, fmt.Sprintf(format, args...))
 }
 
 // StepStart begins a labeled progress step with a spinner.

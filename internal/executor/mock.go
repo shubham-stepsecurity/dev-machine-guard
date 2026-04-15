@@ -267,6 +267,10 @@ func (m *Mock) Glob(pattern string) ([]string, error) {
 	return nil, nil
 }
 
+func (m *Mock) LoggedInUser() (*user.User, error) {
+	return m.CurrentUser()
+}
+
 func (m *Mock) GOOS() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
