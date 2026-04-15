@@ -72,8 +72,8 @@ jobs:
         id: binaries
         run: |
           DARWIN=$(find dist -type f -name '*darwin_unnotarized' | head -1)
-          WIN_AMD64=$(find dist -type f -name '*windows_amd64.exe' | head -1)
-          WIN_ARM64=$(find dist -type f -name '*windows_arm64.exe' | head -1)
+          WIN_AMD64=$(find dist -type f -name '*.exe' -path '*windows_amd64*' | head -1)
+          WIN_ARM64=$(find dist -type f -name '*.exe' -path '*windows_arm64*' | head -1)
 
           for label in "darwin:${DARWIN}" "windows_amd64:${WIN_AMD64}" "windows_arm64:${WIN_ARM64}"; do
             name="${label%%:*}"
