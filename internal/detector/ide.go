@@ -2,7 +2,9 @@ package detector
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,6 +63,78 @@ var ideDefinitions = []ideSpec{
 		AppPath:  "/Applications/Copilot.app",
 		WinPaths: []string{`%LOCALAPPDATA%\Programs\Copilot`},
 	},
+	// JetBrains IDEs — version extracted via product-info.json (macOS + Windows)
+	// or Info.plist fallback (macOS) or registry fallback (Windows).
+	// Windows paths use glob patterns because folder names include the version
+	// (e.g., "IntelliJ IDEA 2024.3.2").
+	{
+		AppName: "IntelliJ IDEA", IDEType: "intellij_idea_ultimate", Vendor: "JetBrains",
+		AppPath:  "/Applications/IntelliJ IDEA.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA 2*`},
+	},
+	{
+		AppName: "IntelliJ IDEA Community Edition", IDEType: "intellij_idea_ce", Vendor: "JetBrains",
+		AppPath:  "/Applications/IntelliJ IDEA CE.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA Community Edition *`},
+	},
+	{
+		AppName: "PyCharm", IDEType: "pycharm_professional", Vendor: "JetBrains",
+		AppPath:  "/Applications/PyCharm.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\PyCharm 2*`},
+	},
+	{
+		AppName: "PyCharm Community Edition", IDEType: "pycharm_ce", Vendor: "JetBrains",
+		AppPath:  "/Applications/PyCharm CE.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\PyCharm Community Edition *`},
+	},
+	{
+		AppName: "WebStorm", IDEType: "webstorm", Vendor: "JetBrains",
+		AppPath:  "/Applications/WebStorm.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\WebStorm *`},
+	},
+	{
+		AppName: "GoLand", IDEType: "goland", Vendor: "JetBrains",
+		AppPath:  "/Applications/GoLand.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\GoLand *`},
+	},
+	{
+		AppName: "PhpStorm", IDEType: "phpstorm", Vendor: "JetBrains",
+		AppPath:  "/Applications/PhpStorm.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\PhpStorm *`},
+	},
+	{
+		AppName: "CLion", IDEType: "clion", Vendor: "JetBrains",
+		AppPath:  "/Applications/CLion.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\CLion *`},
+	},
+	{
+		AppName: "JetBrains Rider", IDEType: "rider", Vendor: "JetBrains",
+		AppPath:  "/Applications/Rider.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\JetBrains Rider *`},
+	},
+	{
+		AppName: "RubyMine", IDEType: "rubymine", Vendor: "JetBrains",
+		AppPath:  "/Applications/RubyMine.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\RubyMine *`},
+	},
+	{
+		AppName: "DataGrip", IDEType: "datagrip", Vendor: "JetBrains",
+		AppPath:  "/Applications/DataGrip.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\DataGrip *`},
+	},
+	{
+		AppName: "Android Studio", IDEType: "android_studio", Vendor: "Google",
+		AppPath:  "/Applications/Android Studio.app",
+		WinPaths: []string{`%PROGRAMFILES%\Android\Android Studio`},
+	},
+	// Eclipse IDE — version extracted via .eclipseproduct (Windows)
+	// or Info.plist fallback (macOS). Eclipse does not register in the
+	// Windows registry and has no --version flag.
+	{
+		AppName: "Eclipse IDE", IDEType: "eclipse", Vendor: "Eclipse Foundation",
+		AppPath:  "/Applications/Eclipse.app",
+		WinPaths: []string{`%PROGRAMFILES%\eclipse`, `C:\eclipse`, `%USERPROFILE%\eclipse\*\eclipse`},
+	},
 }
 
 // IDEDetector detects installed IDEs and AI desktop apps.
@@ -105,6 +179,11 @@ func (d *IDEDetector) detectDarwin(ctx context.Context, spec ideSpec) (model.IDE
 		}
 	}
 
+	// Fallback: product-info.json (JetBrains IDEs)
+	if version == "unknown" {
+		version = readProductInfoVersion(d.exec, filepath.Join(spec.AppPath, "Contents", "Resources", "product-info.json"))
+	}
+
 	// Fallback: Info.plist
 	if version == "unknown" {
 		version = readPlistVersion(ctx, d.exec, filepath.Join(spec.AppPath, "Contents", "Info.plist"))
@@ -119,7 +198,9 @@ func (d *IDEDetector) detectDarwin(ctx context.Context, spec ideSpec) (model.IDE
 func (d *IDEDetector) detectWindows(ctx context.Context, spec ideSpec) (model.IDE, bool) {
 	for _, winPath := range spec.WinPaths {
 		resolved := resolveEnvPath(d.exec, winPath)
-		if !d.exec.DirExists(resolved) {
+
+		installDir, ok := d.resolveInstallDir(resolved)
+		if !ok {
 			continue
 		}
 
@@ -127,10 +208,20 @@ func (d *IDEDetector) detectWindows(ctx context.Context, spec ideSpec) (model.ID
 
 		// Try version from binary
 		if spec.WinBinary != "" && spec.VersionFlag != "" {
-			binaryFull := filepath.Join(resolved, spec.WinBinary)
+			binaryFull := filepath.Join(installDir, spec.WinBinary)
 			if d.exec.FileExists(binaryFull) {
 				version = runVersionCmd(ctx, d.exec, binaryFull, spec.VersionFlag)
 			}
+		}
+
+		// Fallback: product-info.json (JetBrains IDEs)
+		if version == "unknown" {
+			version = readProductInfoVersion(d.exec, filepath.Join(installDir, "product-info.json"))
+		}
+
+		// Fallback: .eclipseproduct
+		if version == "unknown" {
+			version = readEclipseProductVersion(d.exec, filepath.Join(installDir, ".eclipseproduct"))
 		}
 
 		// Fallback: registry
@@ -139,11 +230,43 @@ func (d *IDEDetector) detectWindows(ctx context.Context, spec ideSpec) (model.ID
 		}
 
 		return model.IDE{
-			IDEType: spec.IDEType, Version: version, InstallPath: resolved,
+			IDEType: spec.IDEType, Version: version, InstallPath: installDir,
 			Vendor: spec.Vendor, IsInstalled: true,
 		}, true
 	}
 	return model.IDE{}, false
+}
+
+// resolveInstallDir resolves a Windows path to an install directory.
+// Supports glob patterns (e.g., "C:\Program Files\JetBrains\GoLand *")
+// for IDEs that embed version numbers in folder names.
+// When multiple matches exist, returns the last (newest by lexicographic order).
+func (d *IDEDetector) resolveInstallDir(resolved string) (string, bool) {
+	if !strings.ContainsAny(resolved, "*?[") {
+		if d.exec.DirExists(resolved) {
+			return resolved, true
+		}
+		return "", false
+	}
+
+	matches, err := d.exec.Glob(resolved)
+	if err != nil || len(matches) == 0 {
+		return "", false
+	}
+
+	// Filter to directories only
+	var dirs []string
+	for _, m := range matches {
+		if d.exec.DirExists(m) {
+			dirs = append(dirs, m)
+		}
+	}
+	if len(dirs) == 0 {
+		return "", false
+	}
+
+	sort.Strings(dirs)
+	return dirs[len(dirs)-1], true
 }
 
 // runVersionCmd runs a binary with a version flag and extracts the first line.
@@ -172,6 +295,41 @@ func readPlistVersion(ctx context.Context, exec executor.Executor, plistPath str
 		v := strings.TrimSpace(stdout)
 		if v != "" {
 			return v
+		}
+	}
+	return "unknown"
+}
+
+// readProductInfoVersion reads the "version" field from a JetBrains product-info.json file.
+// Returns "unknown" if the file does not exist or cannot be parsed.
+func readProductInfoVersion(exec executor.Executor, filePath string) string {
+	data, err := exec.ReadFile(filePath)
+	if err != nil {
+		return "unknown"
+	}
+	var info struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &info); err != nil || info.Version == "" {
+		return "unknown"
+	}
+	return info.Version
+}
+
+// readEclipseProductVersion reads the "version" property from an .eclipseproduct file.
+// The file uses Java properties format (key=value per line).
+func readEclipseProductVersion(exec executor.Executor, filePath string) string {
+	data, err := exec.ReadFile(filePath)
+	if err != nil {
+		return "unknown"
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "version=") {
+			v := strings.TrimPrefix(line, "version=")
+			if v != "" {
+				return v
+			}
 		}
 	}
 	return "unknown"

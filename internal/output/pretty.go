@@ -212,6 +212,32 @@ func ideDisplayName(ideType string) string {
 		return "Claude"
 	case "microsoft_copilot_desktop":
 		return "Microsoft Copilot"
+	case "intellij_idea_ultimate":
+		return "IntelliJ IDEA Ultimate"
+	case "intellij_idea_ce":
+		return "IntelliJ IDEA CE"
+	case "pycharm_professional":
+		return "PyCharm Professional"
+	case "pycharm_ce":
+		return "PyCharm CE"
+	case "webstorm":
+		return "WebStorm"
+	case "goland":
+		return "GoLand"
+	case "phpstorm":
+		return "PhpStorm"
+	case "clion":
+		return "CLion"
+	case "rider":
+		return "Rider"
+	case "rubymine":
+		return "RubyMine"
+	case "datagrip":
+		return "DataGrip"
+	case "android_studio":
+		return "Android Studio"
+	case "eclipse":
+		return "Eclipse IDE"
 	default:
 		return ideType
 	}
