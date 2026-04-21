@@ -285,8 +285,8 @@ func (s *NodeScanner) ScanProjects(ctx context.Context, searchDirs []string) []m
 			break
 		}
 		if totalSize > maxBytes {
-			s.log.Progress("  Reached data size limit (%d bytes collected, limit: %d bytes)", totalSize, maxBytes)
-			s.log.Progress("  Skipping remaining projects (prioritized by most recently modified)")
+			s.log.Warn("Reached data size limit (%d bytes collected, limit: %d bytes)", totalSize, maxBytes)
+			s.log.Warn("Skipping remaining projects (prioritized by most recently modified)")
 			break
 		}
 
@@ -298,8 +298,8 @@ func (s *NodeScanner) ScanProjects(ctx context.Context, searchDirs []string) []m
 		resultSize := int64(len(r.RawStdoutBase64)) + int64(len(r.RawStderrBase64))
 
 		if totalSize+resultSize > maxBytes {
-			s.log.Progress("  Reached data size limit (%d bytes collected, limit: %d bytes)", totalSize, maxBytes)
-			s.log.Progress("  Skipping remaining projects (prioritized by most recently modified)")
+			s.log.Warn("Reached data size limit (%d bytes collected, limit: %d bytes)", totalSize, maxBytes)
+			s.log.Warn("Skipping remaining projects (prioritized by most recently modified)")
 			break
 		}
 
