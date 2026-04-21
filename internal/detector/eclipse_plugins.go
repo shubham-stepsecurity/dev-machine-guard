@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/model"
 )
 
@@ -74,14 +73,6 @@ var eclipseBundledPrefixes = []string{
 	// Other standard Eclipse deps
 	"com.sun.xml.",
 	"jaxen",
-}
-
-// eclipseExePatterns are executable names that indicate an Eclipse-family install.
-var eclipseExePatterns = []string{
-	"eclipse.exe",
-	"eclipsec.exe",
-	"sts.exe",
-	"myeclipse.exe",
 }
 
 // eclipseIniPatterns are .ini filenames for Eclipse-family products.
@@ -603,8 +594,3 @@ func parseEclipsePluginName(name string) *model.Extension {
 	}
 }
 
-// resolveEclipseFeatureDirs is kept for backward compatibility but only used on macOS.
-func resolveEclipseFeatureDirs(exec executor.Executor) []string {
-	_ = exec // unused on this path but kept for interface consistency
-	return eclipseFeatureDirsDarwin
-}
