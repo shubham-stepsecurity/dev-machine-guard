@@ -154,8 +154,9 @@ func TestNodeScanner_ScanProject_Windows(t *testing.T) {
 	// DetectProjectPM uses filepath.Join which is host-dependent;
 	// construct the mock file path the same way the code will.
 	mock.SetFile(filepath.Join(`C:\Users\dev\myapp`, "package-lock.json"), []byte{})
+	// RunInDir calls Run(name, args...) directly — no shell cd needed
 	mock.SetCommand(`{"dependencies":{"lodash":{"version":"4.17.21"}}}`, "", 0,
-		"cmd", "/c", `cd "C:\Users\dev\myapp" && npm ls --json --depth=3`)
+		"npm", "ls", "--json", "--depth=3")
 
 	scanner := newTestScanner(mock)
 	result := scanner.scanProject(context.Background(), `C:\Users\dev\myapp`)
@@ -187,8 +188,9 @@ func TestNodeScanner_ScanProject_YarnBerry_Windows(t *testing.T) {
 	projectDir := `C:\Users\dev\myapp`
 	mock.SetFile(filepath.Join(projectDir, "yarn.lock"), []byte{})
 	mock.SetFile(filepath.Join(projectDir, ".yarnrc.yml"), []byte{})
+	// RunInDir calls Run(name, args...) directly — no shell cd needed
 	mock.SetCommand(`{"name":"myapp","children":[]}`, "", 0,
-		"cmd", "/c", `cd "C:\Users\dev\myapp" && yarn info --all --json`)
+		"yarn", "info", "--all", "--json")
 
 	scanner := newTestScanner(mock)
 	result := scanner.scanProject(context.Background(), projectDir)
