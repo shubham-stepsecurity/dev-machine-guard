@@ -18,7 +18,7 @@ type ideSpec struct {
 	Vendor      string
 	AppPath     string   // macOS: /Applications/X.app
 	BinaryPath  string   // macOS: relative to AppPath
-	WinPaths    []string // Windows: candidate install dirs (may contain %ENVVAR%)
+	WinPaths    []string // Windows: candidate install dirs (may contain %ENVVAR% and glob patterns)
 	WinBinary   string   // Windows: binary relative to install dir
 	VersionFlag string
 }
@@ -68,22 +68,22 @@ var ideDefinitions = []ideSpec{
 	// Windows paths use glob patterns because folder names include the version
 	// (e.g., "IntelliJ IDEA 2024.3.2").
 	{
-		AppName: "IntelliJ IDEA", IDEType: "intellij_idea_ultimate", Vendor: "JetBrains",
+		AppName: "IntelliJ IDEA", IDEType: "intellij_idea", Vendor: "JetBrains",
 		AppPath:  "/Applications/IntelliJ IDEA.app",
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA 2*`},
 	},
 	{
-		AppName: "IntelliJ IDEA Community Edition", IDEType: "intellij_idea_ce", Vendor: "JetBrains",
+		AppName: "IntelliJ IDEA CE", IDEType: "intellij_idea_ce", Vendor: "JetBrains",
 		AppPath:  "/Applications/IntelliJ IDEA CE.app",
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA Community Edition *`},
 	},
 	{
-		AppName: "PyCharm", IDEType: "pycharm_professional", Vendor: "JetBrains",
+		AppName: "PyCharm", IDEType: "pycharm", Vendor: "JetBrains",
 		AppPath:  "/Applications/PyCharm.app",
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\PyCharm 2*`},
 	},
 	{
-		AppName: "PyCharm Community Edition", IDEType: "pycharm_ce", Vendor: "JetBrains",
+		AppName: "PyCharm CE", IDEType: "pycharm_ce", Vendor: "JetBrains",
 		AppPath:  "/Applications/PyCharm CE.app",
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\PyCharm Community Edition *`},
 	},
@@ -98,19 +98,14 @@ var ideDefinitions = []ideSpec{
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\GoLand *`},
 	},
 	{
+		AppName: "Rider", IDEType: "rider", Vendor: "JetBrains",
+		AppPath:  "/Applications/Rider.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\JetBrains Rider *`},
+	},
+	{
 		AppName: "PhpStorm", IDEType: "phpstorm", Vendor: "JetBrains",
 		AppPath:  "/Applications/PhpStorm.app",
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\PhpStorm *`},
-	},
-	{
-		AppName: "CLion", IDEType: "clion", Vendor: "JetBrains",
-		AppPath:  "/Applications/CLion.app",
-		WinPaths: []string{`%PROGRAMFILES%\JetBrains\CLion *`},
-	},
-	{
-		AppName: "JetBrains Rider", IDEType: "rider", Vendor: "JetBrains",
-		AppPath:  "/Applications/Rider.app",
-		WinPaths: []string{`%PROGRAMFILES%\JetBrains\JetBrains Rider *`},
 	},
 	{
 		AppName: "RubyMine", IDEType: "rubymine", Vendor: "JetBrains",
@@ -118,23 +113,31 @@ var ideDefinitions = []ideSpec{
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\RubyMine *`},
 	},
 	{
+		AppName: "CLion", IDEType: "clion", Vendor: "JetBrains",
+		AppPath:  "/Applications/CLion.app",
+		WinPaths: []string{`%PROGRAMFILES%\JetBrains\CLion *`},
+	},
+	{
 		AppName: "DataGrip", IDEType: "datagrip", Vendor: "JetBrains",
 		AppPath:  "/Applications/DataGrip.app",
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\DataGrip *`},
+	},
+	{
+		AppName: "Fleet", IDEType: "fleet", Vendor: "JetBrains",
+		AppPath: "/Applications/Fleet.app",
 	},
 	{
 		AppName: "Android Studio", IDEType: "android_studio", Vendor: "Google",
 		AppPath:  "/Applications/Android Studio.app",
 		WinPaths: []string{`%PROGRAMFILES%\Android\Android Studio`},
 	},
-	// Eclipse IDE — version extracted via .eclipseproduct (Windows)
-	// or Info.plist fallback (macOS). Eclipse does not register in the
-	// Windows registry and has no --version flag.
+	// Other IDEs
 	{
-		AppName: "Eclipse IDE", IDEType: "eclipse", Vendor: "Eclipse Foundation",
+		AppName: "Eclipse", IDEType: "eclipse", Vendor: "Eclipse Foundation",
 		AppPath:  "/Applications/Eclipse.app",
 		WinPaths: []string{`%PROGRAMFILES%\eclipse`, `C:\eclipse`, `%USERPROFILE%\eclipse\*\eclipse`},
 	},
+	{AppName: "Xcode", IDEType: "xcode", Vendor: "Apple", AppPath: "/Applications/Xcode.app"},
 }
 
 // IDEDetector detects installed IDEs and AI desktop apps.
@@ -285,21 +288,6 @@ func runVersionCmd(ctx context.Context, exec executor.Executor, binary, flag str
 	return "unknown"
 }
 
-// readPlistVersion reads CFBundleShortVersionString from an Info.plist (macOS).
-func readPlistVersion(ctx context.Context, exec executor.Executor, plistPath string) string {
-	if !exec.FileExists(plistPath) {
-		return "unknown"
-	}
-	stdout, _, _, err := exec.Run(ctx, "/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", plistPath)
-	if err == nil {
-		v := strings.TrimSpace(stdout)
-		if v != "" {
-			return v
-		}
-	}
-	return "unknown"
-}
-
 // readProductInfoVersion reads the "version" field from a JetBrains product-info.json file.
 // Returns "unknown" if the file does not exist or cannot be parsed.
 func readProductInfoVersion(exec executor.Executor, filePath string) string {
@@ -330,6 +318,21 @@ func readEclipseProductVersion(exec executor.Executor, filePath string) string {
 			if v != "" {
 				return v
 			}
+		}
+	}
+	return "unknown"
+}
+
+// readPlistVersion reads CFBundleShortVersionString from an Info.plist (macOS).
+func readPlistVersion(ctx context.Context, exec executor.Executor, plistPath string) string {
+	if !exec.FileExists(plistPath) {
+		return "unknown"
+	}
+	stdout, _, _, err := exec.Run(ctx, "/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", plistPath)
+	if err == nil {
+		v := strings.TrimSpace(stdout)
+		if v != "" {
+			return v
 		}
 	}
 	return "unknown"

@@ -11,12 +11,33 @@ See [VERSIONING.md](VERSIONING.md) for why the version starts at 1.8.1.
 
 ### Added
 
-- **JetBrains IDE detection** (macOS + Windows): IntelliJ IDEA (Ultimate & CE), PyCharm (Professional & CE), WebStorm, GoLand, PhpStorm, CLion, Rider, RubyMine, DataGrip, and Android Studio.
-- **Eclipse IDE detection** (macOS + Windows): Detects standard install paths including Eclipse Installer (`%USERPROFILE%\eclipse\*\eclipse`) and manual installs.
-- **Glob-based Windows path matching**: `detectWindows` now supports wildcard patterns in `WinPaths` for IDEs that embed version numbers in folder names (e.g., `C:\Program Files\JetBrains\GoLand 2025.1.3\`). Picks the newest installation when multiple versions are present.
-- **`product-info.json` version extraction**: Reads the JetBrains `product-info.json` file for accurate marketing version numbers (avoids registry build numbers).
-- **`.eclipseproduct` version extraction**: Reads Eclipse's `.eclipseproduct` properties file for version detection on Windows (Eclipse does not register in the Windows registry).
-- **JetBrains plugin detection** (macOS + Windows): Detects user-installed plugins for all JetBrains IDEs by reading `product-info.json` to resolve the config directory, then scanning the plugins directory. Version extracted from JAR filenames.
+- **Glob-based Windows path matching**: `detectWindows` supports wildcard patterns in `WinPaths` for JetBrains IDEs that embed version numbers in folder names. Picks the newest installation when multiple versions are present.
+- **`product-info.json` version extraction**: Reads JetBrains `product-info.json` for accurate marketing version numbers on Windows (avoids registry build numbers).
+- **`.eclipseproduct` version extraction**: Reads Eclipse's `.eclipseproduct` properties file for version detection on Windows.
+- **JetBrains plugin detection enhancements**: Reads `productVendor` from `product-info.json` for correct config paths (handles Android Studio's `Google` vendor). Checks `idea.plugins.path` override in `idea.properties`.
+
+### Fixed
+
+- **Windows project package scanning**: Added `RunInDir` to Executor interface to bypass `cmd.exe` quote escaping issues. Fixes project-level NPM packages not being collected on Windows.
+
+## [1.10.0] - 2026-04-20
+
+### Added
+
+- Windows support: cross-platform detection for IDEs, extensions, AI tools, frameworks, MCP configs, and Node.js scanning on Windows.
+- Homebrew scanning: detects formulae and casks with raw output capture for enterprise telemetry.
+- Python scanning: detects package managers, global packages, and projects with virtual environments.
+- User-aware executor: commands like `brew`, `pip3`, and `npm` now run in the logged-in user's context when the agent runs as root.
+- IDE plugin detection: JetBrains IDEs, Xcode Source Editor extensions, and Eclipse plugins with bundled/user-installed source tagging.
+- Project-level MCP configuration discovery and filtering.
+- S3 upload retry mechanism with exponential backoff and extended timeout for large payloads.
+- Enhanced user shell resolution for macOS `RunAsUser`.
+
+### Fixed
+
+- Populated missing performance metrics fields (brew formulae/cask counts, Python global packages/project counts).
+- S3 retry logging now includes the actual error value for easier debugging.
+- Retry backoff respects context cancellation during shutdown.
 
 ## [1.9.2] - 2026-04-15
 
@@ -83,6 +104,7 @@ First open-source release. The scanning engine was previously an internal enterp
 - Execution log capture and base64 encoding
 - Instance locking to prevent concurrent runs
 
+[1.10.0]: https://github.com/step-security/dev-machine-guard/compare/v1.9.2...v1.10.0
 [1.9.2]: https://github.com/step-security/dev-machine-guard/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/step-security/dev-machine-guard/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/step-security/dev-machine-guard/compare/v1.8.2...v1.9.0

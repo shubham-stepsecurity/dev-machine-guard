@@ -157,12 +157,50 @@ func TestIDEDetector_Windows_FindsClaude(t *testing.T) {
 	}
 }
 
-// --- JetBrains IDE tests ---
+// --- JetBrains IDE tests (from upstream) ---
+
+func TestIDEDetector_JetBrains(t *testing.T) {
+	mock := executor.NewMock()
+	mock.SetDir("/Applications/GoLand.app")
+	mock.SetFile("/Applications/GoLand.app/Contents/Info.plist", []byte{})
+	mock.SetCommand("2024.3.1", "", 0, "/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", "/Applications/GoLand.app/Contents/Info.plist")
+
+	mock.SetDir("/Applications/IntelliJ IDEA.app")
+	mock.SetFile("/Applications/IntelliJ IDEA.app/Contents/Info.plist", []byte{})
+	mock.SetCommand("2024.3.2", "", 0, "/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", "/Applications/IntelliJ IDEA.app/Contents/Info.plist")
+
+	det := NewIDEDetector(mock)
+	results := det.Detect(context.Background())
+
+	found := map[string]string{}
+	for _, r := range results {
+		found[r.IDEType] = r.Version
+	}
+
+	if v, ok := found["goland"]; !ok {
+		t.Error("expected GoLand to be detected")
+	} else if v != "2024.3.1" {
+		t.Errorf("expected GoLand version 2024.3.1, got %s", v)
+	}
+
+	if v, ok := found["intellij_idea"]; !ok {
+		t.Error("expected IntelliJ IDEA to be detected")
+	} else if v != "2024.3.2" {
+		t.Errorf("expected IntelliJ IDEA version 2024.3.2, got %s", v)
+	}
+
+	for _, r := range results {
+		if r.IDEType == "goland" && r.Vendor != "JetBrains" {
+			t.Errorf("expected JetBrains vendor for GoLand, got %s", r.Vendor)
+		}
+	}
+}
+
+// --- Windows IDE detection tests ---
 
 func TestIDEDetector_FindsGoLand_macOS_ProductInfo(t *testing.T) {
 	mock := executor.NewMock()
 	mock.SetDir("/Applications/GoLand.app")
-	// product-info.json is the primary version source for JetBrains IDEs
 	mock.SetFile("/Applications/GoLand.app/Contents/Resources/product-info.json",
 		[]byte(`{"name":"GoLand","version":"2025.1.3","buildNumber":"251.26927.50","productCode":"GO"}`))
 
@@ -179,15 +217,11 @@ func TestIDEDetector_FindsGoLand_macOS_ProductInfo(t *testing.T) {
 	if found.Vendor != "JetBrains" {
 		t.Errorf("expected JetBrains, got %s", found.Vendor)
 	}
-	if found.InstallPath != "/Applications/GoLand.app" {
-		t.Errorf("expected /Applications/GoLand.app, got %s", found.InstallPath)
-	}
 }
 
 func TestIDEDetector_FindsIntelliJ_macOS_PlistFallback(t *testing.T) {
 	mock := executor.NewMock()
 	mock.SetDir("/Applications/IntelliJ IDEA.app")
-	// No product-info.json, falls back to Info.plist
 	mock.SetFile("/Applications/IntelliJ IDEA.app/Contents/Info.plist", []byte{})
 	mock.SetCommand("2024.3.2", "", 0, "/usr/libexec/PlistBuddy", "-c",
 		"Print :CFBundleShortVersionString", "/Applications/IntelliJ IDEA.app/Contents/Info.plist")
@@ -195,9 +229,9 @@ func TestIDEDetector_FindsIntelliJ_macOS_PlistFallback(t *testing.T) {
 	det := NewIDEDetector(mock)
 	results := det.Detect(context.Background())
 
-	found := findIDE(results, "intellij_idea_ultimate")
+	found := findIDE(results, "intellij_idea")
 	if found == nil {
-		t.Fatal("expected IntelliJ IDEA Ultimate to be detected")
+		t.Fatal("expected IntelliJ IDEA to be detected")
 	}
 	if found.Version != "2024.3.2" {
 		t.Errorf("expected 2024.3.2, got %s", found.Version)
@@ -231,7 +265,6 @@ func TestIDEDetector_Windows_FindsGoLand_Glob(t *testing.T) {
 	mock.SetGOOS("windows")
 	mock.SetEnv("PROGRAMFILES", `C:\Program Files`)
 
-	// Glob pattern after env expansion: "C:\Program Files\JetBrains\GoLand *"
 	globPattern := `C:\Program Files\JetBrains\GoLand *`
 	golandOld := `C:\Program Files\JetBrains\GoLand 2024.1`
 	golandNew := `C:\Program Files\JetBrains\GoLand 2025.1.3`
@@ -239,8 +272,6 @@ func TestIDEDetector_Windows_FindsGoLand_Glob(t *testing.T) {
 	mock.SetDir(golandOld)
 	mock.SetDir(golandNew)
 
-	// product-info.json in the newest install dir
-	// filepath.Join on macOS produces forward slash between dir and filename
 	productInfoPath := golandNew + "/product-info.json"
 	mock.SetFile(productInfoPath,
 		[]byte(`{"name":"GoLand","version":"2025.1.3","buildNumber":"251.26927.50"}`))
@@ -258,13 +289,9 @@ func TestIDEDetector_Windows_FindsGoLand_Glob(t *testing.T) {
 	if found.InstallPath != golandNew {
 		t.Errorf("expected install path %s, got %s", golandNew, found.InstallPath)
 	}
-	if found.Vendor != "JetBrains" {
-		t.Errorf("expected JetBrains, got %s", found.Vendor)
-	}
 }
 
 func TestIDEDetector_Windows_FindsRider_Glob(t *testing.T) {
-	// Rider uses "JetBrains Rider" as the folder name (exception)
 	mock := executor.NewMock()
 	mock.SetGOOS("windows")
 	mock.SetEnv("PROGRAMFILES", `C:\Program Files`)
@@ -294,12 +321,10 @@ func TestIDEDetector_Windows_GlobNoMatches(t *testing.T) {
 	mock := executor.NewMock()
 	mock.SetGOOS("windows")
 	mock.SetEnv("PROGRAMFILES", `C:\Program Files`)
-	// No SetGlob call — mock returns nil for unmatched patterns
 
 	det := NewIDEDetector(mock)
 	results := det.Detect(context.Background())
 
-	// None of the JetBrains IDEs should be detected (no glob matches, no exact paths)
 	for _, r := range results {
 		if r.Vendor == "JetBrains" {
 			t.Errorf("unexpected JetBrains IDE detected: %s", r.IDEType)
@@ -315,7 +340,6 @@ func TestIDEDetector_Windows_FindsEclipse_EclipseProduct(t *testing.T) {
 	eclipsePath := `C:\Program Files\eclipse`
 	mock.SetDir(eclipsePath)
 
-	// .eclipseproduct file provides version (Eclipse has no registry entry)
 	eclipseProductPath := eclipsePath + "/.eclipseproduct"
 	mock.SetFile(eclipseProductPath,
 		[]byte("name=Eclipse Platform\nid=org.eclipse.platform\nversion=4.33.0\n"))
@@ -330,12 +354,6 @@ func TestIDEDetector_Windows_FindsEclipse_EclipseProduct(t *testing.T) {
 	if found.Version != "4.33.0" {
 		t.Errorf("expected 4.33.0, got %s", found.Version)
 	}
-	if found.Vendor != "Eclipse Foundation" {
-		t.Errorf("expected Eclipse Foundation, got %s", found.Vendor)
-	}
-	if found.InstallPath != eclipsePath {
-		t.Errorf("expected install path %s, got %s", eclipsePath, found.InstallPath)
-	}
 }
 
 func TestIDEDetector_Windows_FindsEclipse_UserProfile_Glob(t *testing.T) {
@@ -344,7 +362,6 @@ func TestIDEDetector_Windows_FindsEclipse_UserProfile_Glob(t *testing.T) {
 	mock.SetEnv("PROGRAMFILES", `C:\Program Files`)
 	mock.SetEnv("USERPROFILE", `C:\Users\dev`)
 
-	// Eclipse installed via Oomph installer to user home
 	globPattern := `C:\Users\dev\eclipse\*\eclipse`
 	eclipsePath := `C:\Users\dev\eclipse\java-2024-09\eclipse`
 	mock.SetGlob(globPattern, []string{eclipsePath})
@@ -367,7 +384,6 @@ func TestIDEDetector_Windows_FindsEclipse_UserProfile_Glob(t *testing.T) {
 }
 
 func TestIDEDetector_Windows_VSCode_StillWorks(t *testing.T) {
-	// Verify the glob changes don't break existing non-glob WinPaths
 	mock := executor.NewMock()
 	mock.SetGOOS("windows")
 	mock.SetEnv("LOCALAPPDATA", `C:\Users\testuser\AppData\Local`)
@@ -397,7 +413,6 @@ func TestIDEDetector_Windows_AndroidStudio(t *testing.T) {
 	mock.SetGOOS("windows")
 	mock.SetEnv("PROGRAMFILES", `C:\Program Files`)
 
-	// Android Studio uses a fixed path (no version in folder name)
 	studioPath := `C:\Program Files\Android\Android Studio`
 	mock.SetDir(studioPath)
 

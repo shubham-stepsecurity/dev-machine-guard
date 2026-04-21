@@ -34,6 +34,12 @@ func main() {
 	if cfg.EnableNPMScan == nil && config.EnableNPMScan != nil {
 		cfg.EnableNPMScan = config.EnableNPMScan
 	}
+	if cfg.EnableBrewScan == nil && config.EnableBrewScan != nil {
+		cfg.EnableBrewScan = config.EnableBrewScan
+	}
+	if cfg.EnablePythonScan == nil && config.EnablePythonScan != nil {
+		cfg.EnablePythonScan = config.EnablePythonScan
+	}
 	if cfg.ColorMode == "auto" && config.ColorMode != "" {
 		cfg.ColorMode = config.ColorMode
 	}
@@ -60,9 +66,8 @@ func main() {
 	if cfg.OutputFormat == "json" {
 		quiet = true
 	}
-	if cfg.Command == "send-telemetry" || cfg.Command == "install" {
-		quiet = false
-	}
+	// Note: send-telemetry and bare command (auto-detected enterprise) both
+	// respect the same quiet logic — config value wins, default is true.
 	log := progress.NewLogger(quiet)
 
 	switch cfg.Command {
