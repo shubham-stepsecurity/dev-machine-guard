@@ -58,7 +58,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	log.StepStart("Collecting IDE extensions")
 	start = time.Now()
 	extDetector := detector.NewExtensionDetector(exec)
-	extensions := extDetector.Detect(ctx, searchDirs)
+	extensions := extDetector.Detect(ctx, searchDirs, ides)
 
 	// Collect JetBrains plugins
 	jbDetector := detector.NewJetBrainsPluginDetector(exec)

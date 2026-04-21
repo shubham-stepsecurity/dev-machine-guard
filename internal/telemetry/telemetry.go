@@ -146,7 +146,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	// Collect extensions
 	log.Progress("Scanning extensions...")
 	extDetector := detector.NewExtensionDetector(exec)
-	extensions := extDetector.Detect(ctx, searchDirs)
+	extensions := extDetector.Detect(ctx, searchDirs, ides)
 
 	// Collect JetBrains plugins
 	jbDetector := detector.NewJetBrainsPluginDetector(exec)

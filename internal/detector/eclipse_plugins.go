@@ -75,13 +75,91 @@ var eclipseBundledPrefixes = []string{
 	"org.eclipse.epp.package.",
 }
 
-// DetectEclipsePlugins scans Eclipse feature directories and returns
-// all features tagged as "bundled" or "user_installed".
-func (d *ExtensionDetector) DetectEclipsePlugins() []model.Extension {
+// DetectEclipsePlugins scans Eclipse installations for plugins.
+// Uses detected IDE install paths when available (handles custom install locations).
+// On macOS: scans features/dropins directories for id_version.jar files.
+// On Windows: parses bundles.info (modern Eclipse uses p2 provisioning,
+// not a features directory).
+func (d *ExtensionDetector) DetectEclipsePlugins(ides []model.IDE) []model.Extension {
+	if d.exec.GOOS() == "windows" {
+		return d.detectEclipsePluginsWindows(ides)
+	}
+
 	var results []model.Extension
 	for _, dir := range resolveEclipseFeatureDirs(d.exec) {
 		results = append(results, d.collectEclipseFeatures(dir)...)
 	}
+	return results
+}
+
+// detectEclipsePluginsWindows finds Eclipse install directories and parses
+// bundles.info for installed plugins. Uses the detected IDE install paths
+// (which may have been discovered via registry) so custom paths are covered.
+func (d *ExtensionDetector) detectEclipsePluginsWindows(ides []model.IDE) []model.Extension {
+	// Collect Eclipse install paths from detected IDEs (registry-aware)
+	var eclipseDirs []string
+	for _, ide := range ides {
+		if ide.IDEType == "eclipse" && ide.InstallPath != "" {
+			eclipseDirs = append(eclipseDirs, ide.InstallPath)
+		}
+	}
+
+	var results []model.Extension
+	for _, base := range eclipseDirs {
+		bundlesInfo := filepath.Join(base, "configuration", "org.eclipse.equinox.simpleconfigurator", "bundles.info")
+		plugins := d.parseEclipseBundlesInfo(bundlesInfo)
+		results = append(results, plugins...)
+	}
+	return results
+}
+
+// parseEclipseBundlesInfo reads an Eclipse bundles.info file and returns extensions.
+// Format: id,version,location,startLevel,autoStart (one per line, # comments)
+func (d *ExtensionDetector) parseEclipseBundlesInfo(filePath string) []model.Extension {
+	data, err := d.exec.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+
+	var results []model.Extension
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, ",", 5)
+		if len(parts) < 2 {
+			continue
+		}
+
+		pluginID := parts[0]
+		version := parts[1]
+		if pluginID == "" || version == "" {
+			continue
+		}
+
+		publisher := "unknown"
+		pubParts := strings.SplitN(pluginID, ".", 3)
+		if len(pubParts) >= 2 {
+			publisher = pubParts[0] + "." + pubParts[1]
+		}
+
+		source := "user_installed"
+		if isEclipseBundled(pluginID) {
+			source = "bundled"
+		}
+
+		results = append(results, model.Extension{
+			ID:        pluginID,
+			Name:      pluginID,
+			Version:   version,
+			Publisher: publisher,
+			IDEType:   "eclipse",
+			Source:    source,
+		})
+	}
+
 	return results
 }
 
