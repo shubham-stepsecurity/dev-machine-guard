@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -243,7 +242,8 @@ func (d *IDEDetector) detectWindows(ctx context.Context, spec ideSpec) (model.ID
 // resolveInstallDir resolves a Windows path to an install directory.
 // Supports glob patterns (e.g., "C:\Program Files\JetBrains\GoLand *")
 // for IDEs that embed version numbers in folder names.
-// When multiple matches exist, returns the last (newest by lexicographic order).
+// When multiple matches exist, returns the most recently modified directory
+// (more reliable than lexicographic sort which fails for "2024.9" vs "2024.10").
 func (d *IDEDetector) resolveInstallDir(resolved string) (string, bool) {
 	if !strings.ContainsAny(resolved, "*?[") {
 		if d.exec.DirExists(resolved) {
@@ -257,19 +257,32 @@ func (d *IDEDetector) resolveInstallDir(resolved string) (string, bool) {
 		return "", false
 	}
 
-	// Filter to directories only
-	var dirs []string
+	// Filter to directories and pick the most recently modified one
+	var newest string
+	var newestTime int64
 	for _, m := range matches {
-		if d.exec.DirExists(m) {
-			dirs = append(dirs, m)
+		if !d.exec.DirExists(m) {
+			continue
+		}
+		info, err := d.exec.Stat(m)
+		if err != nil {
+			// Can't stat — still consider it as a candidate
+			if newest == "" {
+				newest = m
+			}
+			continue
+		}
+		mtime := info.ModTime().Unix()
+		if mtime > newestTime {
+			newestTime = mtime
+			newest = m
 		}
 	}
-	if len(dirs) == 0 {
+
+	if newest == "" {
 		return "", false
 	}
-
-	sort.Strings(dirs)
-	return dirs[len(dirs)-1], true
+	return newest, true
 }
 
 // runVersionCmd runs a binary with a version flag and extracts the first line.

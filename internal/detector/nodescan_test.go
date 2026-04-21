@@ -89,9 +89,9 @@ func TestNodeScanner_ScanYarnGlobal_Windows(t *testing.T) {
 	mock.SetPath("yarn", `C:\Program Files\nodejs\yarn.cmd`)
 	mock.SetCommand("1.22.19\n", "", 0, "yarn", "--version")
 	mock.SetCommand(`C:\Users\dev\AppData\Local\Yarn\Data\global`+"\n", "", 0, "yarn", "global", "dir")
-	// runShellCmd dispatches to cmd /c on Windows; platformShellQuote uses double quotes
+	// RunInDir calls Run(name, args...) directly — no shell cd needed
 	mock.SetCommand(`{"type":"tree","data":{"trees":[]}}`, "", 0,
-		"cmd", "/c", `cd "C:\Users\dev\AppData\Local\Yarn\Data\global" && yarn list --json --depth=0`)
+		"yarn", "list", "--json", "--depth=0")
 
 	scanner := newTestScanner(mock)
 	results := scanner.ScanGlobalPackages(context.Background())

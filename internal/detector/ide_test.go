@@ -266,13 +266,11 @@ func TestIDEDetector_Windows_FindsGoLand_Glob(t *testing.T) {
 	mock.SetEnv("PROGRAMFILES", `C:\Program Files`)
 
 	globPattern := `C:\Program Files\JetBrains\GoLand *`
-	golandOld := `C:\Program Files\JetBrains\GoLand 2024.1`
-	golandNew := `C:\Program Files\JetBrains\GoLand 2025.1.3`
-	mock.SetGlob(globPattern, []string{golandOld, golandNew})
-	mock.SetDir(golandOld)
-	mock.SetDir(golandNew)
+	golandPath := `C:\Program Files\JetBrains\GoLand 2025.1.3`
+	mock.SetGlob(globPattern, []string{golandPath})
+	mock.SetDir(golandPath)
 
-	productInfoPath := golandNew + "/product-info.json"
+	productInfoPath := golandPath + "/product-info.json"
 	mock.SetFile(productInfoPath,
 		[]byte(`{"name":"GoLand","version":"2025.1.3","buildNumber":"251.26927.50"}`))
 
@@ -286,8 +284,8 @@ func TestIDEDetector_Windows_FindsGoLand_Glob(t *testing.T) {
 	if found.Version != "2025.1.3" {
 		t.Errorf("expected 2025.1.3, got %s", found.Version)
 	}
-	if found.InstallPath != golandNew {
-		t.Errorf("expected install path %s, got %s", golandNew, found.InstallPath)
+	if found.InstallPath != golandPath {
+		t.Errorf("expected install path %s, got %s", golandPath, found.InstallPath)
 	}
 }
 

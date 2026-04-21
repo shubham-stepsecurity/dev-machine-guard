@@ -74,9 +74,9 @@ func (s *NodeScanner) runInDir(ctx context.Context, dir string, timeout time.Dur
 	if s.shouldRunAsUser() {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		cmd := "cd " + platformShellQuote(s.exec, dir) + " && " + name
+		cmd := "cd " + platformShellQuote(s.exec, dir) + " && " + platformShellQuote(s.exec, name)
 		for _, a := range args {
-			cmd += " " + a
+			cmd += " " + platformShellQuote(s.exec, a)
 		}
 		stdout, err := s.exec.RunAsUser(ctx, s.loggedInUser, cmd)
 		if err != nil {
