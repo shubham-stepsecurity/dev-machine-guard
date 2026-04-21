@@ -65,8 +65,10 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	jbPlugins := jbDetector.Detect(ctx, ides)
 	extensions = append(extensions, jbPlugins...)
 
-	// Filter out bundled/platform plugins unless explicitly requested
-	if !cfg.IncludeBundledPlugins {
+	// On Windows, filter out bundled/platform plugins (e.g., Eclipse's 500+ OSGi
+	// bundles) unless explicitly requested. macOS detection doesn't produce bundled
+	// plugins in significant volume, so this filter is Windows-only.
+	if exec.GOOS() == "windows" && !cfg.IncludeBundledPlugins {
 		extensions = filterUserInstalledExtensions(extensions)
 	}
 	log.StepDone(time.Since(start))
