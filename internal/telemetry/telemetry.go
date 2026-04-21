@@ -152,6 +152,11 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	jbDetector := detector.NewJetBrainsPluginDetector(exec)
 	jbPlugins := jbDetector.Detect(ctx, ides)
 	extensions = append(extensions, jbPlugins...)
+
+	// Filter out bundled/platform plugins unless explicitly requested
+	if !cfg.IncludeBundledPlugins {
+		extensions = filterUserInstalledExtensions(extensions)
+	}
 	log.Progress("Found total of %d IDE extensions", len(extensions))
 	fmt.Fprintln(os.Stderr)
 
@@ -609,4 +614,16 @@ func ideDisplayName(ideType string) string {
 	default:
 		return ideType
 	}
+}
+
+// filterUserInstalledExtensions removes bundled/platform extensions,
+// keeping only user-installed and marketplace extensions.
+func filterUserInstalledExtensions(exts []model.Extension) []model.Extension {
+	var filtered []model.Extension
+	for _, ext := range exts {
+		if ext.Source != "bundled" {
+			filtered = append(filtered, ext)
+		}
+	}
+	return filtered
 }

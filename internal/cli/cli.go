@@ -17,10 +17,11 @@ type Config struct {
 	HTMLOutputFile   string   // set by --html (not persisted)
 	ColorMode        string   // "auto", "always", "never"
 	Verbose          bool     // --verbose
-	EnableNPMScan    *bool    // nil=auto, true/false=explicit
-	EnableBrewScan   *bool    // nil=auto, true/false=explicit
-	EnablePythonScan *bool    // nil=auto, true/false=explicit
-	SearchDirs       []string // defaults to ["$HOME"]
+	EnableNPMScan        *bool    // nil=auto, true/false=explicit
+	EnableBrewScan       *bool    // nil=auto, true/false=explicit
+	EnablePythonScan     *bool    // nil=auto, true/false=explicit
+	IncludeBundledPlugins bool   // --include-bundled-plugins: include bundled/platform plugins in output
+	SearchDirs           []string // defaults to ["$HOME"]
 }
 
 // Parse parses CLI arguments and returns a Config.
@@ -83,6 +84,8 @@ func Parse(args []string) (*Config, error) {
 		case arg == "--disable-python-scan":
 			v := false
 			cfg.EnablePythonScan = &v
+		case arg == "--include-bundled-plugins":
+			cfg.IncludeBundledPlugins = true
 		case strings.HasPrefix(arg, "--color="):
 			mode := strings.TrimPrefix(arg, "--color=")
 			if mode != "auto" && mode != "always" && mode != "never" {

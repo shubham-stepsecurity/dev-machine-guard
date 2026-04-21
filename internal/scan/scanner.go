@@ -64,6 +64,11 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	jbDetector := detector.NewJetBrainsPluginDetector(exec)
 	jbPlugins := jbDetector.Detect(ctx, ides)
 	extensions = append(extensions, jbPlugins...)
+
+	// Filter out bundled/platform plugins unless explicitly requested
+	if !cfg.IncludeBundledPlugins {
+		extensions = filterUserInstalledExtensions(extensions)
+	}
 	log.StepDone(time.Since(start))
 
 	// Node.js scanning (community mode defaults to off, explicit flag overrides)
@@ -253,4 +258,16 @@ func mcpConfigsToCommunity(configs []model.MCPConfig) []model.MCPConfig {
 		return []model.MCPConfig{}
 	}
 	return configs
+}
+
+// filterUserInstalledExtensions removes bundled/platform extensions,
+// keeping only user-installed and marketplace extensions.
+func filterUserInstalledExtensions(exts []model.Extension) []model.Extension {
+	var filtered []model.Extension
+	for _, ext := range exts {
+		if ext.Source != "bundled" {
+			filtered = append(filtered, ext)
+		}
+	}
+	return filtered
 }
