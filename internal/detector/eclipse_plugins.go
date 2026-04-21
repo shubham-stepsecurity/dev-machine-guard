@@ -1,8 +1,10 @@
 package detector
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/model"
@@ -262,23 +264,72 @@ func (d *ExtensionDetector) validateEclipseInstall(installDir string) bool {
 }
 
 // enumerateEclipsePlugins collects plugins from a validated Eclipse install.
-// Primary: bundles.info. Secondary: dropins/ directory.
+// Uses the p2 director API (eclipsec.exe -listInstalledRoots) to get authoritative
+// installed features, then enriches with bundles.info for full bundle details.
 func (d *ExtensionDetector) enumerateEclipsePlugins(installDir string) []model.Extension {
-	var results []model.Extension
-	seen := make(map[string]bool)
+	// Try p2 director first — returns authoritative list of installed root features
+	roots := d.queryP2InstalledRoots(installDir)
 
-	// Primary: bundles.info
-	bundlesInfo := filepath.Join(installDir, "configuration",
-		"org.eclipse.equinox.simpleconfigurator", "bundles.info")
-	for _, ext := range d.parseEclipseBundlesInfo(bundlesInfo) {
-		key := ext.ID + "@" + ext.Version
-		if !seen[key] {
-			seen[key] = true
-			results = append(results, ext)
+	// Build a set of root feature prefixes for marketplace classification.
+	// Root features that are NOT org.eclipse.* or epp.* are marketplace-installed.
+	marketplaceRoots := make(map[string]bool)
+	for _, root := range roots {
+		if !strings.HasPrefix(root.ID, "org.eclipse.") && !strings.HasPrefix(root.ID, "epp.") {
+			// Strip ".feature.group" suffix to get the base feature ID
+			baseID := strings.TrimSuffix(root.ID, ".feature.group")
+			baseID = strings.TrimSuffix(baseID, ".feature")
+			marketplaceRoots[baseID] = true
 		}
 	}
 
-	// Secondary: dropins/
+	var results []model.Extension
+	seen := make(map[string]bool)
+
+	// If we got roots from p2 director, use them for classification
+	if len(roots) > 0 {
+		// Add root features as extensions
+		for _, root := range roots {
+			key := root.ID + "@" + root.Version
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			results = append(results, root)
+		}
+
+		// Also parse bundles.info for non-root bundles that belong to marketplace features.
+		// A bundle belongs to a marketplace feature if its ID starts with any marketplace root prefix.
+		bundlesInfo := filepath.Join(installDir, "configuration",
+			"org.eclipse.equinox.simpleconfigurator", "bundles.info")
+		for _, ext := range d.parseEclipseBundlesInfo(bundlesInfo) {
+			key := ext.ID + "@" + ext.Version
+			if seen[key] {
+				continue
+			}
+			// Check if this bundle belongs to a marketplace feature
+			for prefix := range marketplaceRoots {
+				if strings.HasPrefix(ext.ID, prefix) {
+					ext.Source = "marketplace"
+					seen[key] = true
+					results = append(results, ext)
+					break
+				}
+			}
+		}
+	} else {
+		// Fallback: bundles.info parsing (p2 director unavailable)
+		bundlesInfo := filepath.Join(installDir, "configuration",
+			"org.eclipse.equinox.simpleconfigurator", "bundles.info")
+		for _, ext := range d.parseEclipseBundlesInfo(bundlesInfo) {
+			key := ext.ID + "@" + ext.Version
+			if !seen[key] {
+				seen[key] = true
+				results = append(results, ext)
+			}
+		}
+	}
+
+	// Also check dropins/
 	dropinsDir := filepath.Join(installDir, "dropins")
 	for _, ext := range d.collectDropins(dropinsDir) {
 		key := ext.ID + "@" + ext.Version
@@ -286,6 +337,73 @@ func (d *ExtensionDetector) enumerateEclipsePlugins(installDir string) []model.E
 			seen[key] = true
 			results = append(results, ext)
 		}
+	}
+
+	return results
+}
+
+// queryP2InstalledRoots invokes Eclipse's p2 director to get the authoritative
+// list of installed root features. Returns nil if eclipsec.exe is not available
+// or the command fails. Output format: "feature.id/version" per line.
+func (d *ExtensionDetector) queryP2InstalledRoots(installDir string) []model.Extension {
+	// Find eclipsec.exe (console launcher)
+	eclipsec := filepath.Join(installDir, "eclipsec.exe")
+	if !d.exec.FileExists(eclipsec) {
+		// Try eclipse.exe as fallback (may open a window briefly)
+		eclipsec = filepath.Join(installDir, "eclipse.exe")
+		if !d.exec.FileExists(eclipsec) {
+			return nil
+		}
+	}
+
+	ctx := context.Background()
+	stdout, _, exitCode, err := d.exec.RunWithTimeout(ctx, 30*time.Second,
+		eclipsec, "-nosplash",
+		"-application", "org.eclipse.equinox.p2.director",
+		"-listInstalledRoots")
+	if err != nil || exitCode != 0 {
+		return nil
+	}
+
+	var results []model.Extension
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Skip debug/log lines — they contain spaces and timestamps.
+		// Valid p2 output lines are "feature.id/version" with no spaces before the "/"
+		if strings.Contains(line, " ") {
+			continue
+		}
+		if !strings.Contains(line, "/") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		featureID := parts[0]
+		version := parts[1]
+		if featureID == "" || version == "" {
+			continue
+		}
+
+		source := "bundled"
+		if !strings.HasPrefix(featureID, "org.eclipse.") && !strings.HasPrefix(featureID, "epp.") {
+			source = "marketplace"
+		}
+
+		results = append(results, model.Extension{
+			ID:        featureID,
+			Name:      featureID,
+			Version:   version,
+			Publisher: extractPublisher(featureID),
+			IDEType:   "eclipse",
+			Source:    source,
+		})
 	}
 
 	return results
