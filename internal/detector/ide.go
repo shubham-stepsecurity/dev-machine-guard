@@ -12,14 +12,23 @@ import (
 )
 
 type ideSpec struct {
-	AppName     string
-	IDEType     string
-	Vendor      string
-	AppPath     string   // macOS: /Applications/X.app
-	BinaryPath  string   // macOS: relative to AppPath
-	WinPaths    []string // Windows: candidate install dirs (may contain %ENVVAR% and glob patterns)
-	WinBinary   string   // Windows: binary relative to install dir
-	VersionFlag string
+	AppName      string
+	IDEType      string
+	Vendor       string
+	AppPath      string   // macOS: /Applications/X.app
+	BinaryPath   string   // macOS: relative to AppPath
+	WinPaths     []string // Windows: candidate install dirs (may contain %ENVVAR% and glob patterns)
+	WinBinary    string   // Windows: binary relative to install dir
+	VersionFlag  string
+	RegistryName string // Windows: override for registry search if DisplayName differs from AppName
+}
+
+// registrySearchName returns the name to use for registry searches.
+func (s ideSpec) registrySearchName() string {
+	if s.RegistryName != "" {
+		return s.RegistryName
+	}
+	return s.AppName
 }
 
 var ideDefinitions = []ideSpec{
@@ -97,9 +106,10 @@ var ideDefinitions = []ideSpec{
 		WinPaths: []string{`%PROGRAMFILES%\JetBrains\GoLand *`},
 	},
 	{
-		AppName: "Rider", IDEType: "rider", Vendor: "JetBrains",
-		AppPath:  "/Applications/Rider.app",
-		WinPaths: []string{`%PROGRAMFILES%\JetBrains\JetBrains Rider *`},
+		AppName:      "Rider", IDEType: "rider", Vendor: "JetBrains",
+		AppPath:      "/Applications/Rider.app",
+		WinPaths:     []string{`%PROGRAMFILES%\JetBrains\JetBrains Rider *`},
+		RegistryName: "JetBrains Rider",
 	},
 	{
 		AppName: "PhpStorm", IDEType: "phpstorm", Vendor: "JetBrains",
@@ -198,6 +208,7 @@ func (d *IDEDetector) detectDarwin(ctx context.Context, spec ideSpec) (model.IDE
 }
 
 func (d *IDEDetector) detectWindows(ctx context.Context, spec ideSpec) (model.IDE, bool) {
+	// Phase 1: Try hardcoded paths (fast, no registry)
 	for _, winPath := range spec.WinPaths {
 		resolved := resolveEnvPath(d.exec, winPath)
 
@@ -206,37 +217,79 @@ func (d *IDEDetector) detectWindows(ctx context.Context, spec ideSpec) (model.ID
 			continue
 		}
 
-		version := "unknown"
-
-		// Try version from binary
-		if spec.WinBinary != "" && spec.VersionFlag != "" {
-			binaryFull := filepath.Join(installDir, spec.WinBinary)
-			if d.exec.FileExists(binaryFull) {
-				version = runVersionCmd(ctx, d.exec, binaryFull, spec.VersionFlag)
-			}
-		}
-
-		// Fallback: product-info.json (JetBrains IDEs)
-		if version == "unknown" {
-			version = readProductInfoVersion(d.exec, filepath.Join(installDir, "product-info.json"))
-		}
-
-		// Fallback: .eclipseproduct
-		if version == "unknown" {
-			version = readEclipseProductVersion(d.exec, filepath.Join(installDir, ".eclipseproduct"))
-		}
-
-		// Fallback: registry
-		if version == "unknown" {
-			version = readRegistryVersion(ctx, d.exec, spec.AppName)
-		}
-
+		version := d.resolveWindowsVersion(ctx, spec, installDir)
 		return model.IDE{
 			IDEType: spec.IDEType, Version: version, InstallPath: installDir,
 			Vendor: spec.Vendor, IsInstalled: true,
 		}, true
 	}
+
+	// Phase 2: Registry fallback — discover install path from Uninstall keys.
+	// Catches IDEs installed at non-standard paths (e.g., D:\Tools\VSCode).
+	if installDir, version, ok := d.discoverViaRegistry(ctx, spec); ok {
+		return model.IDE{
+			IDEType: spec.IDEType, Version: version, InstallPath: installDir,
+			Vendor: spec.Vendor, IsInstalled: true,
+		}, true
+	}
+
 	return model.IDE{}, false
+}
+
+// resolveWindowsVersion determines the IDE version using multiple strategies.
+func (d *IDEDetector) resolveWindowsVersion(ctx context.Context, spec ideSpec, installDir string) string {
+	version := d.resolveWindowsVersionFromDir(ctx, spec, installDir)
+	if version == "unknown" {
+		version = readRegistryVersion(ctx, d.exec, spec.registrySearchName())
+	}
+	return version
+}
+
+// resolveWindowsVersionFromDir tries binary, product-info.json, and .eclipseproduct.
+// Does NOT query the registry (caller handles that to avoid redundant queries).
+func (d *IDEDetector) resolveWindowsVersionFromDir(ctx context.Context, spec ideSpec, installDir string) string {
+	version := "unknown"
+
+	if spec.WinBinary != "" && spec.VersionFlag != "" {
+		binaryFull := filepath.Join(installDir, spec.WinBinary)
+		if d.exec.FileExists(binaryFull) {
+			version = runVersionCmd(ctx, d.exec, binaryFull, spec.VersionFlag)
+		}
+	}
+
+	if version == "unknown" {
+		version = readProductInfoVersion(d.exec, filepath.Join(installDir, "product-info.json"))
+	}
+
+	if version == "unknown" {
+		version = readEclipseProductVersion(d.exec, filepath.Join(installDir, ".eclipseproduct"))
+	}
+
+	return version
+}
+
+// discoverViaRegistry attempts to find an IDE's install location from Windows
+// Uninstall registry keys. This is a fallback for IDEs installed at non-standard paths.
+func (d *IDEDetector) discoverViaRegistry(ctx context.Context, spec ideSpec) (string, string, bool) {
+	info := readRegistryInstallInfo(ctx, d.exec, spec.registrySearchName())
+
+	if info.InstallLocation == "" {
+		return "", "", false
+	}
+
+	if !d.exec.DirExists(info.InstallLocation) {
+		return "", "", false
+	}
+
+	// Resolve version from the discovered directory
+	version := d.resolveWindowsVersionFromDir(ctx, spec, info.InstallLocation)
+
+	// Use registry DisplayVersion as final fallback (avoids redundant registry query)
+	if version == "unknown" && info.Version != "" {
+		version = info.Version
+	}
+
+	return info.InstallLocation, version, true
 }
 
 // resolveInstallDir resolves a Windows path to an install directory.
@@ -351,8 +404,15 @@ func readPlistVersion(ctx context.Context, exec executor.Executor, plistPath str
 	return "unknown"
 }
 
-// readRegistryVersion searches Windows Uninstall registry keys for DisplayVersion.
-func readRegistryVersion(ctx context.Context, exec executor.Executor, appName string) string {
+// registryInstallInfo holds version and install path from Windows Uninstall registry keys.
+type registryInstallInfo struct {
+	Version         string
+	InstallLocation string
+}
+
+// readRegistryInstallInfo searches Windows Uninstall registry keys and extracts
+// both DisplayVersion and InstallLocation for the given app name.
+func readRegistryInstallInfo(ctx context.Context, exec executor.Executor, appName string) registryInstallInfo {
 	for _, root := range []string{
 		`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
 		`HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
@@ -362,16 +422,40 @@ func readRegistryVersion(ctx context.Context, exec executor.Executor, appName st
 		if err != nil {
 			continue
 		}
-		// Parse "DisplayVersion    REG_SZ    x.y.z" from reg query output
+
+		var info registryInstallInfo
 		for _, line := range strings.Split(stdout, "\n") {
 			line = strings.TrimSpace(line)
 			if strings.Contains(line, "DisplayVersion") {
 				parts := strings.Fields(line)
 				if len(parts) >= 3 {
-					return parts[len(parts)-1]
+					info.Version = parts[len(parts)-1]
+				}
+			}
+			if strings.Contains(line, "InstallLocation") {
+				// InstallLocation may contain spaces, so split on REG_SZ and trim
+				parts := strings.SplitN(line, "REG_SZ", 2)
+				if len(parts) == 2 {
+					loc := strings.TrimSpace(parts[1])
+					if loc != "" {
+						info.InstallLocation = loc
+					}
 				}
 			}
 		}
+
+		if info.Version != "" || info.InstallLocation != "" {
+			return info
+		}
+	}
+	return registryInstallInfo{}
+}
+
+// readRegistryVersion searches Windows Uninstall registry keys for DisplayVersion.
+func readRegistryVersion(ctx context.Context, exec executor.Executor, appName string) string {
+	info := readRegistryInstallInfo(ctx, exec, appName)
+	if info.Version != "" {
+		return info.Version
 	}
 	return "unknown"
 }
