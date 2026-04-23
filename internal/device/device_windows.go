@@ -5,16 +5,18 @@ package device
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
-// getSerialNumberWindows reads the BIOS serial number from the Windows registry.
-// Falls back to the machine GUID if the serial is empty or a placeholder.
-func getSerialNumberWindows(_ context.Context, _ executor.Executor) string {
-	// Try BIOS registry key
+// getSerialNumberWindows reads the BIOS serial number.
+// Tries native registry first, then PowerShell WMI (for VMs where the registry
+// key may not exist), then falls back to MachineGuid.
+func getSerialNumberWindows(ctx context.Context, exec executor.Executor) string {
+	// Try BIOS registry key (fastest, no subprocess)
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `HARDWARE\DESCRIPTION\System\BIOS`, registry.QUERY_VALUE)
 	if err == nil {
 		serial, _, err := k.GetStringValue("SystemSerialNumber")
@@ -24,7 +26,18 @@ func getSerialNumberWindows(_ context.Context, _ executor.Executor) string {
 		}
 	}
 
-	// Fallback: MachineGuid (unique per install, always present)
+	// Fallback: PowerShell WMI query (works on EC2 and other VMs where
+	// the registry key doesn't exist but WMI exposes the serial)
+	stdout, _, _, err := exec.Run(ctx, "powershell", "-NoProfile", "-Command",
+		"(Get-CimInstance -ClassName Win32_BIOS).SerialNumber")
+	if err == nil {
+		s := strings.TrimSpace(stdout)
+		if s != "" {
+			return s
+		}
+	}
+
+	// Last resort: MachineGuid (unique per install, always present)
 	k, err = registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Cryptography`, registry.QUERY_VALUE)
 	if err == nil {
 		guid, _, err := k.GetStringValue("MachineGuid")
