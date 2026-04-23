@@ -16,10 +16,10 @@ func Gather(ctx context.Context, exec executor.Executor) model.Device {
 
 	var serial, osVersion string
 	switch platform {
-	case "windows":
+	case model.PlatformWindows:
 		serial = getSerialNumberWindows(ctx, exec)
 		osVersion = getOSVersionWindows(ctx, exec)
-	case "darwin":
+	case model.PlatformDarwin:
 		serial = getSerialNumber(ctx, exec)
 		osVersion = getOSVersion(ctx, exec)
 	default: // linux and other unix

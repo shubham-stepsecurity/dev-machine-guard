@@ -5,12 +5,13 @@ import (
 	"strings"
 
 	"github.com/step-security/dev-machine-guard/internal/executor"
+	"github.com/step-security/dev-machine-guard/internal/model"
 )
 
 // isProcessRunning checks if a process with the given name is running.
 // On Unix, uses pgrep -x; on Windows, uses tasklist with IMAGENAME filter.
 func isProcessRunning(ctx context.Context, exec executor.Executor, name string) bool {
-	if exec.GOOS() == "windows" {
+	if exec.GOOS() == model.PlatformWindows {
 		stdout, _, exitCode, _ := exec.Run(ctx, "tasklist", "/FI",
 			"IMAGENAME eq "+name+".exe", "/NH")
 		return exitCode == 0 && !strings.Contains(stdout, "INFO: No tasks")
@@ -22,7 +23,7 @@ func isProcessRunning(ctx context.Context, exec executor.Executor, name string) 
 // isProcessRunningFuzzy checks if any process matches a substring pattern.
 // On Unix, uses pgrep -f; on Windows, scans tasklist output.
 func isProcessRunningFuzzy(ctx context.Context, exec executor.Executor, pattern string) bool {
-	if exec.GOOS() == "windows" {
+	if exec.GOOS() == model.PlatformWindows {
 		stdout, _, _, _ := exec.Run(ctx, "tasklist", "/NH")
 		return strings.Contains(strings.ToLower(stdout), strings.ToLower(pattern))
 	}

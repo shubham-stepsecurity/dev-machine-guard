@@ -87,7 +87,7 @@ func (d *JetBrainsPluginDetector) resolvePluginsDir(ide model.IDE) string {
 // macOS:   ~/Library/Application Support/<vendor>/<dataDirectoryName>/
 // Windows: %APPDATA%/<vendor>/<dataDirectoryName>/ (also checks %LOCALAPPDATA%)
 func (d *JetBrainsPluginDetector) resolveConfigDir(vendor, dataDirName string) string {
-	if d.exec.GOOS() == "windows" {
+	if d.exec.GOOS() == model.PlatformWindows {
 		// Most JetBrains IDEs use APPDATA; Android Studio uses LOCALAPPDATA
 		for _, envVar := range []string{"APPDATA", "LOCALAPPDATA"} {
 			base := d.exec.Getenv(envVar)
@@ -116,7 +116,7 @@ func (d *JetBrainsPluginDetector) resolveConfigDir(vendor, dataDirName string) s
 // On Windows: <installPath>/product-info.json
 func (d *JetBrainsPluginDetector) readProductInfo(installPath string) jetbrainsProductInfo {
 	var productInfoPath string
-	if d.exec.GOOS() == "windows" {
+	if d.exec.GOOS() == model.PlatformWindows {
 		productInfoPath = filepath.Join(installPath, "product-info.json")
 	} else {
 		productInfoPath = filepath.Join(installPath, "Contents", "Resources", "product-info.json")

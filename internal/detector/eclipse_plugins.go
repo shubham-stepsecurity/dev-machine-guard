@@ -98,7 +98,7 @@ var eclipseFeatureDirsDarwin = []string{
 // On Windows: multi-stage pipeline using detected IDE paths, path probes,
 // and drive letter scanning, with validation before reporting.
 func (d *ExtensionDetector) DetectEclipsePlugins(ctx context.Context, ides []model.IDE) []model.Extension {
-	if d.exec.GOOS() != "windows" {
+	if d.exec.GOOS() != model.PlatformWindows {
 		var results []model.Extension
 		for _, dir := range eclipseFeatureDirsDarwin {
 			if d.exec.DirExists(dir) {

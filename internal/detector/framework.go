@@ -91,14 +91,14 @@ func (d *FrameworkDetector) detectLMStudioApp(ctx context.Context) (model.AITool
 	var appPath, version string
 
 	switch d.exec.GOOS() {
-	case "windows":
+	case model.PlatformWindows:
 		localAppData := d.exec.Getenv("LOCALAPPDATA")
 		appPath = filepath.Join(localAppData, "Programs", "LM Studio")
 		if !d.exec.DirExists(appPath) {
 			return model.AITool{}, false
 		}
 		version = readRegistryVersion(ctx, d.exec, "LM Studio")
-	case "darwin":
+	case model.PlatformDarwin:
 		appPath = "/Applications/LM Studio.app"
 		if !d.exec.DirExists(appPath) {
 			return model.AITool{}, false

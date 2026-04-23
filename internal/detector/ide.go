@@ -203,11 +203,11 @@ func (d *IDEDetector) Detect(ctx context.Context) []model.IDE {
 
 	for _, spec := range ideDefinitions {
 		switch d.exec.GOOS() {
-		case "windows":
+		case model.PlatformWindows:
 			if ide, ok := d.detectWindows(ctx, spec); ok {
 				results = append(results, ide)
 			}
-		case "darwin":
+		case model.PlatformDarwin:
 			if ide, ok := d.detectDarwin(ctx, spec); ok {
 				results = append(results, ide)
 			}

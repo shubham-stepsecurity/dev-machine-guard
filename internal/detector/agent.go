@@ -107,14 +107,14 @@ func (d *AgentDetector) detectClaudeCowork(ctx context.Context) (model.AITool, b
 	var claudePath, version string
 
 	switch d.exec.GOOS() {
-	case "windows":
+	case model.PlatformWindows:
 		localAppData := d.exec.Getenv("LOCALAPPDATA")
 		claudePath = filepath.Join(localAppData, "Programs", "Claude")
 		if !d.exec.DirExists(claudePath) {
 			return model.AITool{}, false
 		}
 		version = readRegistryVersion(ctx, d.exec, "Claude")
-	case "darwin":
+	case model.PlatformDarwin:
 		claudePath = "/Applications/Claude.app"
 		if !d.exec.DirExists(claudePath) {
 			return model.AITool{}, false

@@ -68,7 +68,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	// On Windows, filter out bundled/platform plugins (e.g., Eclipse's 500+ OSGi
 	// bundles) unless explicitly requested. macOS detection doesn't produce bundled
 	// plugins in significant volume, so this filter is Windows-only.
-	if exec.GOOS() == "windows" && !cfg.IncludeBundledPlugins {
+	if exec.GOOS() == model.PlatformWindows && !cfg.IncludeBundledPlugins {
 		extensions = model.FilterUserInstalledExtensions(extensions)
 	}
 	log.StepDone(time.Since(start))

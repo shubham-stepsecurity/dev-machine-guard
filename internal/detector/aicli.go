@@ -129,7 +129,7 @@ func (d *AICLIDetector) findBinary(ctx context.Context, spec cliToolSpec, homeDi
 				return expanded, true
 			}
 			// On Windows, also try with .exe suffix
-			if d.exec.GOOS() == "windows" && !strings.HasSuffix(expanded, ".exe") {
+			if d.exec.GOOS() == model.PlatformWindows && !strings.HasSuffix(expanded, ".exe") {
 				if d.exec.FileExists(expanded + ".exe") {
 					return expanded + ".exe", true
 				}

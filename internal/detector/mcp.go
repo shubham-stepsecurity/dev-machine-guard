@@ -171,10 +171,10 @@ func (d *MCPDetector) discoverProjectMCPConfigs(homeDir string) []mcpConfigSpec 
 
 // resolveConfigPath returns the appropriate config path for the current platform.
 func (d *MCPDetector) resolveConfigPath(spec mcpConfigSpec, homeDir string) string {
-	if d.exec.GOOS() == "windows" && spec.WinConfigPath != "" {
+	if d.exec.GOOS() == model.PlatformWindows && spec.WinConfigPath != "" {
 		return resolveEnvPath(d.exec, spec.WinConfigPath)
 	}
-	if d.exec.GOOS() != "darwin" && spec.LinuxConfigPath != "" {
+	if d.exec.GOOS() != model.PlatformDarwin && spec.LinuxConfigPath != "" {
 		return expandTilde(spec.LinuxConfigPath, homeDir)
 	}
 	return expandTilde(spec.ConfigPath, homeDir)
