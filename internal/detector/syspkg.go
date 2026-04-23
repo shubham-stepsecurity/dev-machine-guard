@@ -132,6 +132,113 @@ func parsePackageList(stdout string, parseLine func(string) (string, string, boo
 	return packages
 }
 
+// DetectAdditionalManagers returns snap and/or flatpak if installed.
+// These coexist with the system PM — a machine can have rpm + snap + flatpak.
+func (d *SystemPkgDetector) DetectAdditionalManagers(ctx context.Context) []model.PkgManager {
+	if d.exec.GOOS() != model.PlatformLinux {
+		return nil
+	}
+
+	type additionalPM struct {
+		name       string
+		binary     string
+		versionCmd []string
+	}
+
+	candidates := []additionalPM{
+		{"snap", "snap", []string{"version"}},
+		{"flatpak", "flatpak", []string{"--version"}},
+	}
+
+	var managers []model.PkgManager
+	for _, pm := range candidates {
+		path, err := d.exec.LookPath(pm.binary)
+		if err != nil {
+			continue
+		}
+
+		version := "unknown"
+		stdout, _, _, err := d.exec.RunWithTimeout(ctx, 10*time.Second, pm.binary, pm.versionCmd...)
+		if err == nil {
+			if line := strings.TrimSpace(strings.SplitN(stdout, "\n", 2)[0]); line != "" {
+				version = line
+			}
+		}
+
+		managers = append(managers, model.PkgManager{
+			Name:    pm.name,
+			Version: version,
+			Path:    path,
+		})
+	}
+
+	return managers
+}
+
+// ListSnapPackages returns installed snap packages.
+func (d *SystemPkgDetector) ListSnapPackages(ctx context.Context) []model.SystemPackage {
+	if _, err := d.exec.LookPath("snap"); err != nil {
+		return nil
+	}
+
+	stdout, _, _, err := d.exec.RunWithTimeout(ctx, 30*time.Second, "snap", "list")
+	if err != nil {
+		return nil
+	}
+
+	// snap list output: "Name  Version  Rev  Tracking  Publisher  Notes"
+	// Skip the header line
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) < 2 {
+		return nil
+	}
+
+	var packages []model.SystemPackage
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			packages = append(packages, model.SystemPackage{Name: fields[0], Version: fields[1]})
+		}
+	}
+	return packages
+}
+
+// ListFlatpakPackages returns installed flatpak applications.
+func (d *SystemPkgDetector) ListFlatpakPackages(ctx context.Context) []model.SystemPackage {
+	if _, err := d.exec.LookPath("flatpak"); err != nil {
+		return nil
+	}
+
+	stdout, _, _, err := d.exec.RunWithTimeout(ctx, 30*time.Second,
+		"flatpak", "list", "--app", "--columns=application,version")
+	if err != nil {
+		return nil
+	}
+
+	stdout = strings.TrimSpace(stdout)
+	if stdout == "" {
+		return nil
+	}
+
+	var packages []model.SystemPackage
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Format: "app.id\tversion" (tab-separated)
+		parts := strings.SplitN(line, "\t", 2)
+		version := "unknown"
+		if len(parts) >= 2 && parts[1] != "" {
+			version = parts[1]
+		}
+		if parts[0] != "" {
+			packages = append(packages, model.SystemPackage{Name: parts[0], Version: version})
+		}
+	}
+	return packages
+}
+
 // parseSpaceSeparated handles "name version" format (rpm, dpkg, pacman).
 func parseSpaceSeparated(line string) (string, string, bool) {
 	parts := strings.SplitN(line, " ", 2)

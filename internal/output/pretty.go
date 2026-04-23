@@ -62,6 +62,12 @@ func Pretty(w io.Writer, result *model.ScanResult, colorMode string) error {
 	if result.SystemPkgManager != nil {
 		fmt.Fprintf(w, "    %-24s %s%d%s\n", "System Packages", c.green, result.Summary.SystemPackagesCount, c.reset)
 	}
+	if result.SnapPkgManager != nil {
+		fmt.Fprintf(w, "    %-24s %s%d%s\n", "Snap Packages", c.green, result.Summary.SnapPackagesCount, c.reset)
+	}
+	if result.FlatpakPkgManager != nil {
+		fmt.Fprintf(w, "    %-24s %s%d%s\n", "Flatpak Apps", c.green, result.Summary.FlatpakPackagesCount, c.reset)
+	}
 	fmt.Fprintln(w)
 
 	// AI AGENTS AND TOOLS
@@ -222,6 +228,36 @@ func Pretty(w io.Writer, result *model.ScanResult, colorMode string) error {
 			}
 		} else {
 			fmt.Fprintf(w, "    %sNo packages found%s\n", c.dim, c.reset)
+		}
+		fmt.Fprintln(w)
+	}
+
+	// SNAP PACKAGES (Linux only)
+	if result.SnapPkgManager != nil {
+		fmt.Fprintf(w, "  %s%sSNAP PACKAGES%s\n", c.purple, c.bold, c.reset)
+		fmt.Fprintln(w)
+		if len(result.SnapPackages) > 0 {
+			printSectionHeader(w, c, "Installed Snaps", len(result.SnapPackages))
+			for _, pkg := range result.SnapPackages {
+				fmt.Fprintf(w, "      %-36s %s%s%s\n", pkg.Name, c.dim, pkg.Version, c.reset)
+			}
+		} else {
+			fmt.Fprintf(w, "    %sNo snap packages found%s\n", c.dim, c.reset)
+		}
+		fmt.Fprintln(w)
+	}
+
+	// FLATPAK APPS (Linux only)
+	if result.FlatpakPkgManager != nil {
+		fmt.Fprintf(w, "  %s%sFLATPAK APPS%s\n", c.purple, c.bold, c.reset)
+		fmt.Fprintln(w)
+		if len(result.FlatpakPackages) > 0 {
+			printSectionHeader(w, c, "Installed Apps", len(result.FlatpakPackages))
+			for _, pkg := range result.FlatpakPackages {
+				fmt.Fprintf(w, "      %-36s %s%s%s\n", pkg.Name, c.dim, pkg.Version, c.reset)
+			}
+		} else {
+			fmt.Fprintf(w, "    %sNo flatpak apps found%s\n", c.dim, c.reset)
 		}
 		fmt.Fprintln(w)
 	}

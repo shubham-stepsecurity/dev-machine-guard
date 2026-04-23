@@ -20,9 +20,13 @@ type ScanResult struct {
 	PythonPkgManagers []PkgManager    `json:"python_package_managers"`
 	PythonPackages    []PythonPackage `json:"python_packages"`
 	PythonProjects    []ProjectInfo   `json:"python_projects"`
-	SystemPkgManager  *PkgManager     `json:"system_package_manager,omitempty"`
-	SystemPackages    []SystemPackage `json:"system_packages"`
-	Summary           Summary         `json:"summary"`
+	SystemPkgManager    *PkgManager     `json:"system_package_manager,omitempty"`
+	SystemPackages      []SystemPackage `json:"system_packages"`
+	SnapPkgManager      *PkgManager     `json:"snap_package_manager,omitempty"`
+	SnapPackages        []SystemPackage `json:"snap_packages"`
+	FlatpakPkgManager   *PkgManager     `json:"flatpak_package_manager,omitempty"`
+	FlatpakPackages     []SystemPackage `json:"flatpak_packages"`
+	Summary             Summary         `json:"summary"`
 }
 
 type Device struct {
@@ -95,6 +99,8 @@ type Summary struct {
 	BrewCasksCount        int `json:"brew_casks_count"`
 	PythonProjectsCount   int `json:"python_projects_count"`
 	SystemPackagesCount   int `json:"system_packages_count"`
+	SnapPackagesCount     int `json:"snap_packages_count"`
+	FlatpakPackagesCount  int `json:"flatpak_packages_count"`
 }
 
 // NodeScanResult holds raw scan output for enterprise telemetry.
