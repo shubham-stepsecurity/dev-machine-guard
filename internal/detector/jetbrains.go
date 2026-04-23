@@ -24,6 +24,7 @@ type jetbrainsProductInfo struct {
 //
 //   - macOS:   ~/Library/Application Support/<vendor>/<dataDirectoryName>/plugins/
 //   - Windows: %APPDATA%/<vendor>/<dataDirectoryName>/plugins/
+//   - Linux:   ~/.config/<vendor>/<dataDirectoryName>/plugins/ (XDG_CONFIG_HOME respected)
 //
 // Also checks for custom plugin path overrides in idea.properties.
 // Plugin version is extracted from JAR filenames matching <pluginDirName>-<version>.jar.
@@ -86,6 +87,7 @@ func (d *JetBrainsPluginDetector) resolvePluginsDir(ide model.IDE) string {
 // resolveConfigDir returns the platform-specific JetBrains config directory.
 // macOS:   ~/Library/Application Support/<vendor>/<dataDirectoryName>/
 // Windows: %APPDATA%/<vendor>/<dataDirectoryName>/ (also checks %LOCALAPPDATA%)
+// Linux:   ~/.config/<vendor>/<dataDirectoryName>/ (XDG_CONFIG_HOME respected)
 func (d *JetBrainsPluginDetector) resolveConfigDir(vendor, dataDirName string) string {
 	if d.exec.GOOS() == model.PlatformWindows {
 		// Most JetBrains IDEs use APPDATA; Android Studio uses LOCALAPPDATA
@@ -108,18 +110,28 @@ func (d *JetBrainsPluginDetector) resolveConfigDir(vendor, dataDirName string) s
 	}
 
 	homeDir := getHomeDir(d.exec)
-	return filepath.Join(homeDir, "Library", "Application Support", vendor, dataDirName)
+
+	if d.exec.GOOS() == model.PlatformDarwin {
+		return filepath.Join(homeDir, "Library", "Application Support", vendor, dataDirName)
+	}
+
+	// Linux: respect XDG_CONFIG_HOME, default to ~/.config
+	configHome := d.exec.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		configHome = filepath.Join(homeDir, ".config")
+	}
+	return filepath.Join(configHome, vendor, dataDirName)
 }
 
 // readProductInfo reads dataDirectoryName and productVendor from product-info.json.
 // On macOS: <installPath>/Contents/Resources/product-info.json
-// On Windows: <installPath>/product-info.json
+// On Windows/Linux: <installPath>/product-info.json
 func (d *JetBrainsPluginDetector) readProductInfo(installPath string) jetbrainsProductInfo {
 	var productInfoPath string
-	if d.exec.GOOS() == model.PlatformWindows {
-		productInfoPath = filepath.Join(installPath, "product-info.json")
-	} else {
+	if d.exec.GOOS() == model.PlatformDarwin {
 		productInfoPath = filepath.Join(installPath, "Contents", "Resources", "product-info.json")
+	} else {
+		productInfoPath = filepath.Join(installPath, "product-info.json")
 	}
 
 	data, err := d.exec.ReadFile(productInfoPath)
