@@ -20,6 +20,8 @@ type ScanResult struct {
 	PythonPkgManagers []PkgManager    `json:"python_package_managers"`
 	PythonPackages    []PythonPackage `json:"python_packages"`
 	PythonProjects    []ProjectInfo   `json:"python_projects"`
+	SystemPkgManager  *PkgManager     `json:"system_package_manager,omitempty"`
+	SystemPackages    []SystemPackage `json:"system_packages"`
 	Summary           Summary         `json:"summary"`
 }
 
@@ -92,6 +94,7 @@ type Summary struct {
 	BrewFormulaeCount     int `json:"brew_formulae_count"`
 	BrewCasksCount        int `json:"brew_casks_count"`
 	PythonProjectsCount   int `json:"python_projects_count"`
+	SystemPackagesCount   int `json:"system_packages_count"`
 }
 
 // NodeScanResult holds raw scan output for enterprise telemetry.
@@ -119,6 +122,13 @@ type ProjectInfo struct {
 	Path           string          `json:"path"`
 	PackageManager string          `json:"package_manager,omitempty"`
 	Packages       []PackageDetail `json:"packages,omitempty"`
+}
+
+// SystemPackage represents a package installed via the system package manager
+// (rpm, dpkg, pacman, apk).
+type SystemPackage struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 // BrewPackage represents a single installed Homebrew formula or cask.

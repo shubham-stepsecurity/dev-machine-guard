@@ -59,6 +59,9 @@ func Pretty(w io.Writer, result *model.ScanResult, colorMode string) error {
 	if len(result.PythonPkgManagers) > 0 {
 		fmt.Fprintf(w, "    %-24s %s%d%s\n", "Python Projects", c.green, result.Summary.PythonProjectsCount, c.reset)
 	}
+	if result.SystemPkgManager != nil {
+		fmt.Fprintf(w, "    %-24s %s%d%s\n", "System Packages", c.green, result.Summary.SystemPackagesCount, c.reset)
+	}
 	fmt.Fprintln(w)
 
 	// AI AGENTS AND TOOLS
@@ -201,6 +204,24 @@ func Pretty(w io.Writer, result *model.ScanResult, colorMode string) error {
 			for _, pkg := range proj.Packages {
 				fmt.Fprintf(w, "      %-36s %s%s%s\n", pkg.Name, c.dim, pkg.Version, c.reset)
 			}
+		}
+		fmt.Fprintln(w)
+	}
+
+	// SYSTEM PACKAGES (Linux only)
+	if result.SystemPkgManager != nil {
+		fmt.Fprintf(w, "  %s%sSYSTEM PACKAGES (%s)%s%*s%sv%s%s\n",
+			c.purple, c.bold, strings.ToUpper(result.SystemPkgManager.Name), c.reset,
+			18-len(result.SystemPkgManager.Name), "", c.dim, result.SystemPkgManager.Version, c.reset)
+		fmt.Fprintln(w)
+
+		if len(result.SystemPackages) > 0 {
+			printSectionHeader(w, c, "Installed Packages", len(result.SystemPackages))
+			for _, pkg := range result.SystemPackages {
+				fmt.Fprintf(w, "      %-36s %s%s%s\n", pkg.Name, c.dim, pkg.Version, c.reset)
+			}
+		} else {
+			fmt.Fprintf(w, "    %sNo packages found%s\n", c.dim, c.reset)
 		}
 		fmt.Fprintln(w)
 	}

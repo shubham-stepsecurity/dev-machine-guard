@@ -125,6 +125,21 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 		log.StepSkip("disabled (use --enable-brew-scan to enable)")
 	}
 
+	// System package manager (Linux only — rpm, dpkg, pacman, apk)
+	var systemPkgManager *model.PkgManager
+	var systemPackages []model.SystemPackage
+
+	if exec.GOOS() == model.PlatformLinux {
+		log.StepStart("Detecting system packages")
+		start = time.Now()
+		sysPkgDetector := detector.NewSystemPkgDetector(exec)
+		systemPkgManager = sysPkgDetector.Detect(ctx)
+		if systemPkgManager != nil {
+			systemPackages = sysPkgDetector.ListPackages(ctx)
+		}
+		log.StepDone(time.Since(start))
+	}
+
 	// Python scanning (community mode defaults to off, explicit flag overrides)
 	pythonEnabled := false
 	if cfg.EnablePythonScan != nil {
@@ -188,6 +203,9 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	if pythonPackages == nil {
 		pythonPackages = []model.PythonPackage{}
 	}
+	if systemPackages == nil {
+		systemPackages = []model.SystemPackage{}
+	}
 
 	// Build result
 	now := time.Now()
@@ -210,6 +228,8 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 		PythonPkgManagers: pythonPkgManagers,
 		PythonPackages:    pythonPackages,
 		PythonProjects:    pythonProjects,
+		SystemPkgManager:  systemPkgManager,
+		SystemPackages:    systemPackages,
 		Summary: model.Summary{
 			AIAgentsAndToolsCount: len(aiTools),
 			IDEInstallationsCount: len(ides),
@@ -219,6 +239,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 			BrewFormulaeCount:     len(brewFormulae),
 			BrewCasksCount:        len(brewCasks),
 			PythonProjectsCount:   len(pythonProjects),
+			SystemPackagesCount:   len(systemPackages),
 		},
 	}
 
