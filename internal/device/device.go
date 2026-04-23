@@ -36,41 +36,8 @@ func Gather(ctx context.Context, exec executor.Executor) model.Device {
 	}
 }
 
-func getSerialNumberWindows(ctx context.Context, exec executor.Executor) string {
-	// Try wmic
-	stdout, _, _, err := exec.Run(ctx, "wmic", "bios", "get", "serialnumber")
-	if err == nil {
-		lines := strings.Split(strings.TrimSpace(stdout), "\n")
-		if len(lines) >= 2 {
-			serial := strings.TrimSpace(lines[1])
-			if serial != "" && serial != "SerialNumber" {
-				return serial
-			}
-		}
-	}
-	// Fallback: PowerShell
-	stdout, _, _, err = exec.Run(ctx, "powershell", "-NoProfile", "-Command",
-		"(Get-CimInstance -ClassName Win32_BIOS).SerialNumber")
-	if err == nil {
-		s := strings.TrimSpace(stdout)
-		if s != "" {
-			return s
-		}
-	}
-	return "unknown"
-}
-
-func getOSVersionWindows(ctx context.Context, exec executor.Executor) string {
-	stdout, _, _, err := exec.Run(ctx, "powershell", "-NoProfile", "-Command",
-		"[System.Environment]::OSVersion.Version.ToString()")
-	if err == nil {
-		v := strings.TrimSpace(stdout)
-		if v != "" {
-			return v
-		}
-	}
-	return "unknown"
-}
+// getSerialNumberWindows and getOSVersionWindows are implemented in
+// device_windows.go (native API) and device_other.go (stub).
 
 func getSerialNumber(ctx context.Context, exec executor.Executor) string {
 	// Try ioreg first
@@ -179,10 +146,9 @@ func getOSVersionLinux(ctx context.Context, exec executor.Executor) string {
 		}
 	}
 
-	// Kernel version from uname
-	stdout, _, _, err := exec.Run(ctx, "uname", "-r")
-	if err == nil {
-		kernel = strings.TrimSpace(stdout)
+	// Kernel version: read /proc/sys/kernel/osrelease (avoids subprocess)
+	if data, err := exec.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
+		kernel = strings.TrimSpace(string(data))
 	}
 
 	// Compose: "Fedora Linux 42 (Cloud Edition) - 6.19.12-100.fc42.x86_64"

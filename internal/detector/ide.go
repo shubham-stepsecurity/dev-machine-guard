@@ -68,7 +68,7 @@ var ideDefinitions = []ideSpec{
 	{
 		AppName: "Zed", IDEType: "zed", Vendor: "Zed",
 		AppPath: "/Applications/Zed.app", BinaryPath: "Contents/MacOS/zed",
-		WinPaths:    []string{`%LOCALAPPDATA%\Zed`}, WinBinary: "zed.exe",
+		WinPaths: []string{`%LOCALAPPDATA%\Zed`}, WinBinary: "zed.exe",
 		LinuxPaths:  []string{"~/.local/zed.app", "/usr/lib/zed"},
 		LinuxBinary: "zed",
 	},
@@ -89,44 +89,44 @@ var ideDefinitions = []ideSpec{
 	// Linux paths include /opt (manual tar.gz), /snap (snap), and Toolbox locations.
 	{
 		AppName: "IntelliJ IDEA", IDEType: "intellij_idea", Vendor: "JetBrains",
-		AppPath:    "/Applications/IntelliJ IDEA.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA 2*`},
-		LinuxPaths: []string{"/opt/idea-IU-*", "/snap/intellij-idea-ultimate/current", "~/.local/share/JetBrains/Toolbox/apps/IDEA-U/ch-0/*"},
+		AppPath:     "/Applications/IntelliJ IDEA.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA 2*`},
+		LinuxPaths:  []string{"/opt/idea-IU-*", "/snap/intellij-idea-ultimate/current", "~/.local/share/JetBrains/Toolbox/apps/IDEA-U/ch-0/*"},
 		LinuxBinary: "idea",
 	},
 	{
 		AppName: "IntelliJ IDEA CE", IDEType: "intellij_idea_ce", Vendor: "JetBrains",
-		AppPath:    "/Applications/IntelliJ IDEA CE.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA Community Edition *`},
-		LinuxPaths: []string{"/opt/idea-IC-*", "/snap/intellij-idea-community/current", "~/.local/share/JetBrains/Toolbox/apps/IDEA-C/ch-0/*"},
+		AppPath:     "/Applications/IntelliJ IDEA CE.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\IntelliJ IDEA Community Edition *`},
+		LinuxPaths:  []string{"/opt/idea-IC-*", "/snap/intellij-idea-community/current", "~/.local/share/JetBrains/Toolbox/apps/IDEA-C/ch-0/*"},
 		LinuxBinary: "idea",
 	},
 	{
 		AppName: "PyCharm", IDEType: "pycharm", Vendor: "JetBrains",
-		AppPath:    "/Applications/PyCharm.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\PyCharm 2*`},
-		LinuxPaths: []string{"/opt/pycharm-*", "/snap/pycharm-professional/current", "~/.local/share/JetBrains/Toolbox/apps/PyCharm-P/ch-0/*"},
+		AppPath:     "/Applications/PyCharm.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\PyCharm 2*`},
+		LinuxPaths:  []string{"/opt/pycharm-*", "/snap/pycharm-professional/current", "~/.local/share/JetBrains/Toolbox/apps/PyCharm-P/ch-0/*"},
 		LinuxBinary: "pycharm",
 	},
 	{
 		AppName: "PyCharm CE", IDEType: "pycharm_ce", Vendor: "JetBrains",
-		AppPath:    "/Applications/PyCharm CE.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\PyCharm Community Edition *`},
-		LinuxPaths: []string{"/opt/pycharm-community-*", "/snap/pycharm-community/current", "~/.local/share/JetBrains/Toolbox/apps/PyCharm-C/ch-0/*"},
+		AppPath:     "/Applications/PyCharm CE.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\PyCharm Community Edition *`},
+		LinuxPaths:  []string{"/opt/pycharm-community-*", "/snap/pycharm-community/current", "~/.local/share/JetBrains/Toolbox/apps/PyCharm-C/ch-0/*"},
 		LinuxBinary: "pycharm",
 	},
 	{
 		AppName: "WebStorm", IDEType: "webstorm", Vendor: "JetBrains",
-		AppPath:    "/Applications/WebStorm.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\WebStorm *`},
-		LinuxPaths: []string{"/opt/webstorm-*", "/snap/webstorm/current", "~/.local/share/JetBrains/Toolbox/apps/WebStorm/ch-0/*"},
+		AppPath:     "/Applications/WebStorm.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\WebStorm *`},
+		LinuxPaths:  []string{"/opt/webstorm-*", "/snap/webstorm/current", "~/.local/share/JetBrains/Toolbox/apps/WebStorm/ch-0/*"},
 		LinuxBinary: "webstorm",
 	},
 	{
 		AppName: "GoLand", IDEType: "goland", Vendor: "JetBrains",
-		AppPath:    "/Applications/GoLand.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\GoLand *`},
-		LinuxPaths: []string{"/opt/goland-*", "/snap/goland/current", "~/.local/share/JetBrains/Toolbox/apps/GoLand/ch-0/*"},
+		AppPath:     "/Applications/GoLand.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\GoLand *`},
+		LinuxPaths:  []string{"/opt/goland-*", "/snap/goland/current", "~/.local/share/JetBrains/Toolbox/apps/GoLand/ch-0/*"},
 		LinuxBinary: "goland",
 	},
 	{
@@ -139,51 +139,51 @@ var ideDefinitions = []ideSpec{
 	},
 	{
 		AppName: "PhpStorm", IDEType: "phpstorm", Vendor: "JetBrains",
-		AppPath:    "/Applications/PhpStorm.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\PhpStorm *`},
-		LinuxPaths: []string{"/opt/phpstorm-*", "/snap/phpstorm/current", "~/.local/share/JetBrains/Toolbox/apps/PhpStorm/ch-0/*"},
+		AppPath:     "/Applications/PhpStorm.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\PhpStorm *`},
+		LinuxPaths:  []string{"/opt/phpstorm-*", "/snap/phpstorm/current", "~/.local/share/JetBrains/Toolbox/apps/PhpStorm/ch-0/*"},
 		LinuxBinary: "phpstorm",
 	},
 	{
 		AppName: "RubyMine", IDEType: "rubymine", Vendor: "JetBrains",
-		AppPath:    "/Applications/RubyMine.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\RubyMine *`},
-		LinuxPaths: []string{"/opt/rubymine-*", "/snap/rubymine/current", "~/.local/share/JetBrains/Toolbox/apps/RubyMine/ch-0/*"},
+		AppPath:     "/Applications/RubyMine.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\RubyMine *`},
+		LinuxPaths:  []string{"/opt/rubymine-*", "/snap/rubymine/current", "~/.local/share/JetBrains/Toolbox/apps/RubyMine/ch-0/*"},
 		LinuxBinary: "rubymine",
 	},
 	{
 		AppName: "CLion", IDEType: "clion", Vendor: "JetBrains",
-		AppPath:    "/Applications/CLion.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\CLion *`},
-		LinuxPaths: []string{"/opt/clion-*", "/snap/clion/current", "~/.local/share/JetBrains/Toolbox/apps/CLion/ch-0/*"},
+		AppPath:     "/Applications/CLion.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\CLion *`},
+		LinuxPaths:  []string{"/opt/clion-*", "/snap/clion/current", "~/.local/share/JetBrains/Toolbox/apps/CLion/ch-0/*"},
 		LinuxBinary: "clion",
 	},
 	{
 		AppName: "DataGrip", IDEType: "datagrip", Vendor: "JetBrains",
-		AppPath:    "/Applications/DataGrip.app",
-		WinPaths:   []string{`%PROGRAMFILES%\JetBrains\DataGrip *`},
-		LinuxPaths: []string{"/opt/datagrip-*", "/snap/datagrip/current", "~/.local/share/JetBrains/Toolbox/apps/DataGrip/ch-0/*"},
+		AppPath:     "/Applications/DataGrip.app",
+		WinPaths:    []string{`%PROGRAMFILES%\JetBrains\DataGrip *`},
+		LinuxPaths:  []string{"/opt/datagrip-*", "/snap/datagrip/current", "~/.local/share/JetBrains/Toolbox/apps/DataGrip/ch-0/*"},
 		LinuxBinary: "datagrip",
 	},
 	{
 		AppName: "Fleet", IDEType: "fleet", Vendor: "JetBrains",
-		AppPath:    "/Applications/Fleet.app",
-		LinuxPaths: []string{"~/.local/share/JetBrains/Toolbox/apps/Fleet/ch-0/*"},
+		AppPath:     "/Applications/Fleet.app",
+		LinuxPaths:  []string{"~/.local/share/JetBrains/Toolbox/apps/Fleet/ch-0/*"},
 		LinuxBinary: "fleet",
 	},
 	{
 		AppName: "Android Studio", IDEType: "android_studio", Vendor: "Google",
-		AppPath:    "/Applications/Android Studio.app",
-		WinPaths:   []string{`%PROGRAMFILES%\Android\Android Studio`},
-		LinuxPaths: []string{"/opt/android-studio", "/usr/local/android-studio", "~/.local/share/JetBrains/Toolbox/apps/AndroidStudio/ch-0/*"},
+		AppPath:     "/Applications/Android Studio.app",
+		WinPaths:    []string{`%PROGRAMFILES%\Android\Android Studio`},
+		LinuxPaths:  []string{"/opt/android-studio", "/usr/local/android-studio", "~/.local/share/JetBrains/Toolbox/apps/AndroidStudio/ch-0/*"},
 		LinuxBinary: "studio.sh",
 	},
 	// Other IDEs
 	{
 		AppName: "Eclipse", IDEType: "eclipse", Vendor: "Eclipse Foundation",
-		AppPath:    "/Applications/Eclipse.app",
-		WinPaths:   []string{`%PROGRAMFILES%\eclipse`, `C:\eclipse`, `%USERPROFILE%\eclipse\*\eclipse`},
-		LinuxPaths: []string{"/opt/eclipse", "/usr/lib/eclipse", "/snap/eclipse/current", "~/eclipse/*/eclipse"},
+		AppPath:     "/Applications/Eclipse.app",
+		WinPaths:    []string{`%PROGRAMFILES%\eclipse`, `C:\eclipse`, `%USERPROFILE%\eclipse\*\eclipse`},
+		LinuxPaths:  []string{"/opt/eclipse", "/usr/lib/eclipse", "/snap/eclipse/current", "~/eclipse/*/eclipse"},
 		LinuxBinary: "eclipse",
 	},
 	{AppName: "Xcode", IDEType: "xcode", Vendor: "Apple", AppPath: "/Applications/Xcode.app"},
@@ -529,55 +529,8 @@ type registryInstallInfo struct {
 	InstallLocation string
 }
 
-// readRegistryInstallInfo searches Windows Uninstall registry keys and extracts
-// both DisplayVersion and InstallLocation for the given app name.
-func readRegistryInstallInfo(ctx context.Context, exec executor.Executor, appName string) registryInstallInfo {
-	for _, root := range []string{
-		`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
-		`HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
-		`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
-	} {
-		stdout, _, _, err := exec.Run(ctx, "reg", "query", root, "/s", "/f", appName, "/d")
-		if err != nil {
-			continue
-		}
-
-		var info registryInstallInfo
-		for _, line := range strings.Split(stdout, "\n") {
-			line = strings.TrimSpace(line)
-			if strings.Contains(line, "DisplayVersion") {
-				parts := strings.Fields(line)
-				if len(parts) >= 3 {
-					info.Version = parts[len(parts)-1]
-				}
-			}
-			if strings.Contains(line, "InstallLocation") {
-				// InstallLocation may contain spaces, so split on REG_SZ and trim
-				parts := strings.SplitN(line, "REG_SZ", 2)
-				if len(parts) == 2 {
-					loc := strings.TrimSpace(parts[1])
-					if loc != "" {
-						info.InstallLocation = loc
-					}
-				}
-			}
-		}
-
-		if info.Version != "" || info.InstallLocation != "" {
-			return info
-		}
-	}
-	return registryInstallInfo{}
-}
-
-// readRegistryVersion searches Windows Uninstall registry keys for DisplayVersion.
-func readRegistryVersion(ctx context.Context, exec executor.Executor, appName string) string {
-	info := readRegistryInstallInfo(ctx, exec, appName)
-	if info.Version != "" {
-		return info.Version
-	}
-	return "unknown"
-}
+// readRegistryInstallInfo and readRegistryVersion are implemented in
+// registry_windows.go (native API) and registry_other.go (stub).
 
 // discoverViaDesktopFile searches XDG .desktop files for an IDE's install location.
 // This is the Linux equivalent of the Windows registry fallback — .desktop files are

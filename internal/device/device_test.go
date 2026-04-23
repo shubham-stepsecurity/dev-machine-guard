@@ -70,8 +70,8 @@ func TestGather_Linux(t *testing.T) {
 
 	// /etc/os-release for distro name
 	mock.SetFile("/etc/os-release", []byte("NAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nPRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\n"))
-	// uname -r for kernel version
-	mock.SetCommand("6.8.0-45-generic\n", "", 0, "uname", "-r")
+	// /proc/sys/kernel/osrelease for kernel version
+	mock.SetFile("/proc/sys/kernel/osrelease", []byte("6.8.0-45-generic\n"))
 
 	dev := Gather(context.Background(), mock)
 
@@ -104,8 +104,8 @@ func TestGather_LinuxFallbackDmidecode(t *testing.T) {
 
 	// /etc/os-release not available, lsb_release works
 	mock.SetCommand("Ubuntu 22.04.3 LTS\n", "", 0, "lsb_release", "-d", "-s")
-	// uname -r for kernel
-	mock.SetCommand("5.15.0-91-generic\n", "", 0, "uname", "-r")
+	// /proc/sys/kernel/osrelease for kernel
+	mock.SetFile("/proc/sys/kernel/osrelease", []byte("5.15.0-91-generic\n"))
 
 	dev := Gather(context.Background(), mock)
 
@@ -131,8 +131,8 @@ func TestGather_LinuxFallbackMachineID(t *testing.T) {
 	// machine-id fallback
 	mock.SetFile("/etc/machine-id", []byte("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4\n"))
 
-	// OS version: only uname -r available
-	mock.SetCommand("6.5.0-44-generic\n", "", 0, "uname", "-r")
+	// OS version: only /proc/sys/kernel/osrelease available
+	mock.SetFile("/proc/sys/kernel/osrelease", []byte("6.5.0-44-generic\n"))
 
 	dev := Gather(context.Background(), mock)
 
