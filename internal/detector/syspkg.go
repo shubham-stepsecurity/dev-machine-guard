@@ -72,8 +72,8 @@ func (d *SystemPkgDetector) Detect(ctx context.Context) *model.PkgManager {
 		}
 
 		version := "unknown"
-		stdout, _, _, err := d.exec.RunWithTimeout(ctx, 10*time.Second, spec.Binary, spec.VersionCmd...)
-		if err == nil {
+		stdout, _, exitCode, err := d.exec.RunWithTimeout(ctx, 10*time.Second, spec.Binary, spec.VersionCmd...)
+		if err == nil && exitCode == 0 {
 			if line := strings.TrimSpace(strings.SplitN(stdout, "\n", 2)[0]); line != "" {
 				version = line
 			}
@@ -101,8 +101,8 @@ func (d *SystemPkgDetector) ListPackages(ctx context.Context) []model.SystemPack
 			continue
 		}
 
-		stdout, _, _, err := d.exec.RunWithTimeout(ctx, 60*time.Second, spec.Binary, spec.ListCmd...)
-		if err != nil {
+		stdout, _, exitCode, err := d.exec.RunWithTimeout(ctx, 60*time.Second, spec.Binary, spec.ListCmd...)
+		if err != nil || exitCode != 0 {
 			return nil
 		}
 
@@ -158,8 +158,8 @@ func (d *SystemPkgDetector) DetectAdditionalManagers(ctx context.Context) []mode
 		}
 
 		version := "unknown"
-		stdout, _, _, err := d.exec.RunWithTimeout(ctx, 10*time.Second, pm.binary, pm.versionCmd...)
-		if err == nil {
+		stdout, _, exitCode, err := d.exec.RunWithTimeout(ctx, 10*time.Second, pm.binary, pm.versionCmd...)
+		if err == nil && exitCode == 0 {
 			if line := strings.TrimSpace(strings.SplitN(stdout, "\n", 2)[0]); line != "" {
 				version = line
 			}
@@ -181,8 +181,8 @@ func (d *SystemPkgDetector) ListSnapPackages(ctx context.Context) []model.System
 		return nil
 	}
 
-	stdout, _, _, err := d.exec.RunWithTimeout(ctx, 30*time.Second, "snap", "list")
-	if err != nil {
+	stdout, _, exitCode, err := d.exec.RunWithTimeout(ctx, 30*time.Second, "snap", "list")
+	if err != nil || exitCode != 0 {
 		return nil
 	}
 
@@ -209,9 +209,9 @@ func (d *SystemPkgDetector) ListFlatpakPackages(ctx context.Context) []model.Sys
 		return nil
 	}
 
-	stdout, _, _, err := d.exec.RunWithTimeout(ctx, 30*time.Second,
+	stdout, _, exitCode, err := d.exec.RunWithTimeout(ctx, 30*time.Second,
 		"flatpak", "list", "--app", "--columns=application,version")
-	if err != nil {
+	if err != nil || exitCode != 0 {
 		return nil
 	}
 

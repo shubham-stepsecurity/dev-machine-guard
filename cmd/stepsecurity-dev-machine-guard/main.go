@@ -108,11 +108,14 @@ func main() {
 				log.Error("%v", err)
 				os.Exit(1)
 			}
-		default:
+		case "linux":
 			if err := systemd.Install(exec, log); err != nil {
 				log.Error("%v", err)
 				os.Exit(1)
 			}
+		default:
+			log.Error("Scheduled installation is not supported on %s", runtime.GOOS)
+			os.Exit(1)
 		}
 		log.Progress("Sending initial telemetry...")
 		fmt.Println()
@@ -134,11 +137,14 @@ func main() {
 				log.Error("%v", err)
 				os.Exit(1)
 			}
-		default:
+		case "linux":
 			if err := systemd.Uninstall(exec, log); err != nil {
 				log.Error("%v", err)
 				os.Exit(1)
 			}
+		default:
+			log.Error("Scheduled installation is not supported on %s", runtime.GOOS)
+			os.Exit(1)
 		}
 
 	default:

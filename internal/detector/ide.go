@@ -302,10 +302,24 @@ func (d *IDEDetector) detectLinux(ctx context.Context, spec ideSpec) (model.IDE,
 }
 
 // resolveLinuxVersion determines the IDE version on Linux.
-// Tries: binary --version, then product-info.json (flat layout), then .eclipseproduct.
+// Prefers the binary within installDir to avoid version mismatch with a different
+// install found via PATH. Falls back to PATH lookup, then metadata files.
 func (d *IDEDetector) resolveLinuxVersion(ctx context.Context, spec ideSpec, installDir string) string {
-	// Try binary --version from PATH first (most reliable on Linux)
 	if spec.LinuxBinary != "" && spec.VersionFlag != "" {
+		// Try binary inside the detected install directory first
+		for _, relBin := range []string{
+			filepath.Join("bin", spec.LinuxBinary),
+			spec.LinuxBinary,
+		} {
+			localBin := filepath.Join(installDir, relBin)
+			if d.exec.FileExists(localBin) {
+				if v := runVersionCmd(ctx, d.exec, localBin, spec.VersionFlag); v != "unknown" {
+					return v
+				}
+			}
+		}
+
+		// Fall back to PATH (may be a different install, but better than unknown)
 		if binPath, err := d.exec.LookPath(spec.LinuxBinary); err == nil {
 			if v := runVersionCmd(ctx, d.exec, binPath, spec.VersionFlag); v != "unknown" {
 				return v
@@ -572,7 +586,8 @@ func (d *IDEDetector) discoverViaDesktopFile(spec ideSpec, homeDir string) (stri
 }
 
 // parseDesktopExec extracts the binary path from the first Exec= line in a .desktop file.
-// Strips field codes (%F, %U, etc.) and flags (--new-window, etc.).
+// Handles wrapper commands like "env VAR=val /snap/bin/code %U" by scanning tokens
+// for the first absolute path.
 func parseDesktopExec(content string) string {
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
@@ -580,38 +595,46 @@ func parseDesktopExec(content string) string {
 			continue
 		}
 		execValue := strings.TrimPrefix(line, "Exec=")
-		// The first token is the binary path; the rest are arguments
 		parts := strings.Fields(execValue)
-		if len(parts) == 0 {
-			continue
+
+		// Find the first token that looks like an absolute path
+		for _, token := range parts {
+			// Skip field codes (%F, %U, etc.) and flags (--foo)
+			if strings.HasPrefix(token, "%") || strings.HasPrefix(token, "-") {
+				continue
+			}
+			// Skip env var assignments (VAR=val)
+			if strings.Contains(token, "=") && !strings.HasPrefix(token, "/") {
+				continue
+			}
+			if strings.HasPrefix(token, "/") {
+				return token
+			}
 		}
-		binPath := parts[0]
-		// Skip entries that are just bare command names (no path)
-		if !strings.Contains(binPath, "/") {
-			continue
-		}
-		return binPath
 	}
 	return ""
 }
 
 // resolveInstallDirFromBinary walks up from a binary path to find the app root directory.
-// Strips known bin subdirectories: /bin/, /resources/app/bin/.
+// Handles two common layouts:
+//   - /usr/share/code/bin/code           -> /usr/share/code
+//   - /usr/share/cursor/resources/app/bin/cursor -> /usr/share/cursor
 func resolveInstallDirFromBinary(binPath string) string {
 	dir := filepath.Dir(binPath)
 	base := filepath.Base(dir)
 
-	// /usr/share/code/bin/code -> /usr/share/code
-	// /opt/Windsurf/bin/windsurf -> /opt/Windsurf
-	if base == "bin" {
-		return filepath.Dir(dir)
+	if base != "bin" {
+		return dir
 	}
+
+	parent := filepath.Dir(dir)
+
+	// Check for resources/app/bin layout (Electron apps like Cursor)
 	// /usr/share/cursor/resources/app/bin/cursor -> /usr/share/cursor
-	if base == "bin" || filepath.Base(filepath.Dir(dir)) == "app" {
-		candidate := filepath.Dir(filepath.Dir(filepath.Dir(dir)))
-		if candidate != "" && candidate != "." {
-			return candidate
-		}
+	if filepath.Base(parent) == "app" && filepath.Base(filepath.Dir(parent)) == "resources" {
+		return filepath.Dir(filepath.Dir(parent))
 	}
-	return dir
+
+	// Simple /bin/ layout: /usr/share/code/bin/code -> /usr/share/code
+	return parent
 }

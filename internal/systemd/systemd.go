@@ -52,8 +52,8 @@ func Install(exec executor.Executor, log *progress.Logger) error {
 	}
 
 	data := unitTemplateData{
-		BinaryPath: binaryPath,
-		LogDir:     logDir,
+		BinaryPath: systemdEscape(binaryPath),
+		LogDir:     systemdEscape(logDir),
 		Hours:      hours,
 	}
 
@@ -70,8 +70,12 @@ func Install(exec executor.Executor, log *progress.Logger) error {
 	}
 
 	// Reload and enable
-	if _, _, _, err := exec.Run(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+	_, daemonStderr, daemonExitCode, err := exec.Run(ctx, "systemctl", "--user", "daemon-reload")
+	if err != nil {
 		return fmt.Errorf("daemon-reload failed: %w", err)
+	}
+	if daemonExitCode != 0 {
+		return fmt.Errorf("daemon-reload failed (exit code %d): %s", daemonExitCode, daemonStderr)
 	}
 
 	_, stderr, exitCode, err := exec.Run(ctx, "systemctl", "--user", "enable", "--now", unitName+".timer")
@@ -149,9 +153,15 @@ func writeTemplate(path, tmplStr string, data unitTemplateData) error {
 }
 
 type unitTemplateData struct {
-	BinaryPath string
+	BinaryPath string // systemd-escaped (spaces replaced with \x20)
 	LogDir     string
 	Hours      int
+}
+
+// systemdEscape escapes a file path for use in systemd unit files.
+// Spaces must be escaped as \x20 in ExecStart and related directives.
+func systemdEscape(path string) string {
+	return strings.ReplaceAll(path, " ", `\x20`)
 }
 
 const serviceTmpl = `[Unit]
