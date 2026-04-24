@@ -43,7 +43,7 @@ func NewNodeScanner(exec executor.Executor, log *progress.Logger, loggedInUser s
 // shouldRunAsUser returns true when commands should be delegated to the logged-in user.
 // Only applies on Unix — RunAsUser uses sudo which is not available on Windows.
 func (s *NodeScanner) shouldRunAsUser() bool {
-	return s.exec.GOOS() != "windows" && s.exec.IsRoot() && s.loggedInUser != ""
+	return s.exec.GOOS() != model.PlatformWindows && s.exec.IsRoot() && s.loggedInUser != ""
 }
 
 // runCmd runs a command, delegating to the logged-in user when running as root.

@@ -11,6 +11,9 @@ import (
 // DetectXcodeExtensions uses macOS pluginkit to find installed
 // Xcode Source Editor extensions.
 func (d *ExtensionDetector) DetectXcodeExtensions(ctx context.Context) []model.Extension {
+	if d.exec.GOOS() != model.PlatformDarwin {
+		return nil
+	}
 	stdout, _, _, err := d.exec.RunWithTimeout(ctx, 10*time.Second,
 		"pluginkit", "-mAD", "-p", "com.apple.dt.Xcode.extension.source-editor")
 	if err != nil {
@@ -42,10 +45,7 @@ func (d *ExtensionDetector) DetectXcodeExtensions(ctx context.Context) []model.E
 // "+    com.charcoaldesign.SwiftFormat-for-Xcode.SourceEditorExtension(0.60.1)"
 func parsePluginkitLine(line string) *model.Extension {
 	// Strip leading +/- and whitespace
-	enabled := false
-	if strings.HasPrefix(line, "+") {
-		enabled = true
-	}
+	enabled := strings.HasPrefix(line, "+")
 	line = strings.TrimLeft(line, "+- \t")
 
 	if line == "" {

@@ -68,7 +68,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	// On Windows, filter out bundled/platform plugins (e.g., Eclipse's 500+ OSGi
 	// bundles) unless explicitly requested. macOS detection doesn't produce bundled
 	// plugins in significant volume, so this filter is Windows-only.
-	if exec.GOOS() == "windows" && !cfg.IncludeBundledPlugins {
+	if exec.GOOS() == model.PlatformWindows && !cfg.IncludeBundledPlugins {
 		extensions = model.FilterUserInstalledExtensions(extensions)
 	}
 	log.StepDone(time.Since(start))
@@ -123,6 +123,36 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	} else {
 		log.StepStart("Homebrew package scanning")
 		log.StepSkip("disabled (use --enable-brew-scan to enable)")
+	}
+
+	// System package managers (Linux only — rpm/dpkg/pacman/apk + snap + flatpak)
+	var systemPkgManager *model.PkgManager
+	var systemPackages []model.SystemPackage
+	var snapPkgManager, flatpakPkgManager *model.PkgManager
+	var snapPackages, flatpakPackages []model.SystemPackage
+
+	if exec.GOOS() == model.PlatformLinux {
+		log.StepStart("Detecting system packages")
+		start = time.Now()
+		sysPkgDetector := detector.NewSystemPkgDetector(exec)
+		systemPkgManager = sysPkgDetector.Detect(ctx)
+		if systemPkgManager != nil {
+			systemPackages = sysPkgDetector.ListPackages(ctx)
+		}
+
+		// Snap and flatpak coexist with the system PM
+		for _, mgr := range sysPkgDetector.DetectAdditionalManagers(ctx) {
+			mgr := mgr
+			switch mgr.Name {
+			case "snap":
+				snapPkgManager = &mgr
+				snapPackages = sysPkgDetector.ListSnapPackages(ctx)
+			case "flatpak":
+				flatpakPkgManager = &mgr
+				flatpakPackages = sysPkgDetector.ListFlatpakPackages(ctx)
+			}
+		}
+		log.StepDone(time.Since(start))
 	}
 
 	// Python scanning (community mode defaults to off, explicit flag overrides)
@@ -188,6 +218,15 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 	if pythonPackages == nil {
 		pythonPackages = []model.PythonPackage{}
 	}
+	if systemPackages == nil {
+		systemPackages = []model.SystemPackage{}
+	}
+	if snapPackages == nil {
+		snapPackages = []model.SystemPackage{}
+	}
+	if flatpakPackages == nil {
+		flatpakPackages = []model.SystemPackage{}
+	}
 
 	// Build result
 	now := time.Now()
@@ -210,6 +249,12 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 		PythonPkgManagers: pythonPkgManagers,
 		PythonPackages:    pythonPackages,
 		PythonProjects:    pythonProjects,
+		SystemPkgManager:  systemPkgManager,
+		SystemPackages:    systemPackages,
+		SnapPkgManager:    snapPkgManager,
+		SnapPackages:      snapPackages,
+		FlatpakPkgManager: flatpakPkgManager,
+		FlatpakPackages:   flatpakPackages,
 		Summary: model.Summary{
 			AIAgentsAndToolsCount: len(aiTools),
 			IDEInstallationsCount: len(ides),
@@ -219,6 +264,9 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 			BrewFormulaeCount:     len(brewFormulae),
 			BrewCasksCount:        len(brewCasks),
 			PythonProjectsCount:   len(pythonProjects),
+			SystemPackagesCount:   len(systemPackages),
+			SnapPackagesCount:     len(snapPackages),
+			FlatpakPackagesCount:  len(flatpakPackages),
 		},
 	}
 
