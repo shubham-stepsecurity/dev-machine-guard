@@ -65,6 +65,23 @@ func TestAICLIDetector_RejectsCopilotInstallPrompt(t *testing.T) {
 	}
 }
 
+func TestAICLIDetector_RejectsCopilotNonZeroExit(t *testing.T) {
+	shimPath := "/usr/local/bin/copilot"
+	mock := executor.NewMock()
+	mock.SetPath("copilot", shimPath)
+	// Output matches the version regex but exit code is non-zero — should be rejected.
+	mock.SetCommand("copilot 1.2 internal error\n", "", 1, shimPath, "--version")
+
+	det := NewAICLIDetector(mock)
+	results := det.Detect(context.Background())
+
+	for _, r := range results {
+		if r.Name == "github-copilot-cli" {
+			t.Errorf("github-copilot-cli should not be detected when --version exits non-zero; got %+v", r)
+		}
+	}
+}
+
 func TestAICLIDetector_AcceptsRealCopilotVersion(t *testing.T) {
 	mock := executor.NewMock()
 	mock.SetPath("copilot", "/usr/local/bin/copilot")

@@ -4,15 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/model"
 )
-
-var versionTokenRE = regexp.MustCompile(`\d+\.\d+`)
 
 type cliToolSpec struct {
 	Name        string
@@ -65,8 +62,8 @@ var cliToolDefinitions = []cliToolSpec{
 		// even when the real CLI isn't installed and replies to `--version` with
 		// "GitHub Copilot CLI is not installed. Would you like to install it? (Y/n)".
 		VerifyFunc: func(ctx context.Context, exec executor.Executor, binary string) bool {
-			stdout, _, _, err := exec.RunWithTimeout(ctx, 10*time.Second, binary, "--version")
-			if err != nil {
+			stdout, _, exitCode, err := exec.RunWithTimeout(ctx, 10*time.Second, binary, "--version")
+			if err != nil || exitCode != 0 {
 				return false
 			}
 			lower := strings.ToLower(stdout)
@@ -74,7 +71,7 @@ var cliToolDefinitions = []cliToolSpec{
 				strings.Contains(lower, "would you like to install") {
 				return false
 			}
-			return versionTokenRE.MatchString(stdout)
+			return true
 		},
 	},
 	{
