@@ -36,7 +36,7 @@ func TestReportRunStatus_StartedRetriesOn5xx(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", runStatusStarted, "")
 
 	if got := atomic.LoadInt32(&calls); got != int32(runStatusStartedAttempts) {
@@ -53,7 +53,7 @@ func TestReportRunStatus_StartedStopsAfter2xx(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", runStatusStarted, "")
 
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -71,7 +71,7 @@ func TestReportRunStatus_DoesNotRetryOn4xx(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", runStatusStarted, "")
 
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -88,7 +88,7 @@ func TestReportRunStatus_FailedRetriesOn5xx(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", runStatusFailed, "boom")
 
 	if got := atomic.LoadInt32(&calls); got != int32(runStatusFailedAttempts) {
@@ -106,7 +106,7 @@ func TestReportRunStatus_FailedIncludesErrorMessage(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", runStatusFailed, "context deadline exceeded")
 
 	if gotBody["status"] != runStatusFailed {
@@ -128,7 +128,7 @@ func TestReportRunStatus_SkipsSucceededAndUnknownStatus(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", "succeeded", "")
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", "cancelled", "")
 
@@ -150,7 +150,7 @@ func TestReportRunStatus_SkipsWhenNotEnterprise(t *testing.T) {
 	config.APIKey = "{{API_KEY}}"
 	defer func() { config.APIKey = savedKey }()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "11111111-2222-4333-8444-555555555555", "dev-1", runStatusStarted, "")
 
 	if got := atomic.LoadInt32(&calls); got != 0 {
@@ -166,7 +166,7 @@ func TestReportRunStatus_SkipsEmptyExecutionID(t *testing.T) {
 	defer srv.Close()
 	defer withEnterpriseConfig(t, srv.URL)()
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	reportRunStatus(context.Background(), log, "", "dev-1", runStatusStarted, "")
 
 	if got := atomic.LoadInt32(&calls); got != 0 {
@@ -188,7 +188,7 @@ func TestReportRunStatus_AbortsRetriesOnCtxCancel(t *testing.T) {
 	// land in the backoff select where ctx.Done wins.
 	time.AfterFunc(runStatusHTTPTimeout+100*time.Millisecond, cancel)
 
-	log := progress.NewLogger(true)
+	log := progress.NewLogger(progress.LevelInfo)
 	done := make(chan struct{})
 	start := time.Now()
 	go func() {
