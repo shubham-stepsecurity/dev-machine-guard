@@ -163,6 +163,17 @@ type SystemPackage struct {
 type BrewPackage struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
+
+	// Metadata (populated from brew info --json=v2)
+	Tap                   string `json:"tap,omitempty"`                     // Source tap: "homebrew/core", "homebrew/cask", or custom
+	Description           string `json:"description,omitempty"`             // Package description
+	License               string `json:"license,omitempty"`                 // SPDX license (formulae only)
+	Homepage              string `json:"homepage,omitempty"`                // Upstream project URL
+	InstallTimeUnix       int64  `json:"install_time_unix,omitempty"`       // Unix epoch when installed
+	InstalledAsDependency bool   `json:"installed_as_dependency,omitempty"` // true if pulled in by another package
+	Deprecated            bool   `json:"deprecated,omitempty"`              // true if package is deprecated upstream
+	PouredFromBottle      bool   `json:"poured_from_bottle,omitempty"`      // true if installed from pre-built binary
+	AutoUpdates           bool   `json:"auto_updates,omitempty"`            // cask: app handles its own updates
 }
 
 // PythonPackage represents a single installed Python package.
