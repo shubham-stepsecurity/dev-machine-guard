@@ -30,6 +30,11 @@ func (d *PythonProjectDetector) CountProjects(_ context.Context, searchDirs []st
 
 // ListProjects returns Python projects that have a virtual environment,
 // along with the packages installed in each venv.
+//
+// Note: ProjectInfo.Path is the venv directory itself (not the project root,
+// unlike Node detection). This lets multiple venvs under the same parent
+// directory each surface as their own entry. The package_manager field is
+// still derived from marker files in the parent directory.
 func (d *PythonProjectDetector) ListProjects(searchDirs []string) []model.ProjectInfo {
 	var projects []model.ProjectInfo
 	for _, dir := range searchDirs {
@@ -54,7 +59,8 @@ func (d *PythonProjectDetector) findPipInVenv(venvPath string) string {
 }
 
 // isVenvDir reports whether path is a Python virtual environment, returning
-// the pip path inside it (or "" if not a venv).
+// the pip path inside it (which may be empty for valid venvs created with
+// --without-pip) and a flag indicating venv shape.
 //
 // Detection priority:
 //  1. pyvenv.cfg at the venv root (PEP 405 — covers `python -m venv` and
@@ -62,19 +68,22 @@ func (d *PythonProjectDetector) findPipInVenv(venvPath string) string {
 //  2. bin/pip (or Scripts/pip.exe) plus an activate script — covers older
 //     virtualenvs that predate pyvenv.cfg. The activate-script check guards
 //     against false positives like /usr/local/bin/pip.
-func (d *PythonProjectDetector) isVenvDir(path string) string {
+//
+// Returning isVenv=true even when pip is missing lets callers SkipDir the
+// venv tree (which can hold thousands of files in site-packages).
+func (d *PythonProjectDetector) isVenvDir(path string) (pipPath string, isVenv bool) {
 	if d.exec.FileExists(filepath.Join(path, "pyvenv.cfg")) {
-		return d.findPipInVenv(path)
+		return d.findPipInVenv(path), true
 	}
 	pip := d.findPipInVenv(path)
 	if pip == "" {
-		return ""
+		return "", false
 	}
 	if d.exec.FileExists(filepath.Join(path, "bin", "activate")) ||
 		d.exec.FileExists(filepath.Join(path, "Scripts", "activate")) {
-		return pip
+		return pip, true
 	}
-	return ""
+	return "", false
 }
 
 // listVenvPackages runs pip list inside the venv and returns the packages.
@@ -112,7 +121,6 @@ var pythonPMFromMarker = map[string]string{
 
 func (d *PythonProjectDetector) listInDir(dir string) []model.ProjectInfo {
 	ctx := context.Background()
-	seen := make(map[string]bool)
 	var projects []model.ProjectInfo
 	_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -128,26 +136,27 @@ func (d *PythonProjectDetector) listInDir(dir string) []model.ProjectInfo {
 			return filepath.SkipDir
 		}
 
-		pipPath := d.isVenvDir(path)
-		if pipPath == "" {
+		pipPath, isVenv := d.isVenvDir(path)
+		if !isVenv {
 			return nil
 		}
 
-		// Report each venv as its own entry (Path = venv folder), so multiple
-		// venvs sharing a parent directory are all surfaced. Marker-based
-		// package_manager detection still runs against the parent dir.
-		if !seen[path] {
-			seen[path] = true
-			pm := d.detectPM(filepath.Dir(path))
-			pkgs := d.listVenvPackages(ctx, pipPath)
-			projects = append(projects, model.ProjectInfo{
-				Path:           path,
-				PackageManager: pm,
-				Packages:       pkgs,
-			})
-			if len(projects) >= maxPythonProjects {
-				return filepath.SkipAll
-			}
+		// Each venv is reported as its own entry (Path = venv folder), so
+		// multiple venvs sharing a parent are all surfaced. package_manager
+		// detection runs against the parent dir. Skip descending into the
+		// venv tree regardless of pip presence — site-packages can be huge.
+		pm := d.detectPM(filepath.Dir(path))
+		var pkgs []model.PackageDetail
+		if pipPath != "" {
+			pkgs = d.listVenvPackages(ctx, pipPath)
+		}
+		projects = append(projects, model.ProjectInfo{
+			Path:           path,
+			PackageManager: pm,
+			Packages:       pkgs,
+		})
+		if len(projects) >= maxPythonProjects {
+			return filepath.SkipAll
 		}
 		return filepath.SkipDir
 	})

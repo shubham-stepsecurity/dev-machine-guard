@@ -246,6 +246,35 @@ func TestPythonProjectDetector_WindowsLayout(t *testing.T) {
 	}
 }
 
+// Venvs created with `python -m venv --without-pip` carry pyvenv.cfg but no
+// pip. They should still be reported (Packages empty), and the walker must
+// not descend into the venv tree (regression guard for the perf bug).
+func TestPythonProjectDetector_VenvWithoutPip(t *testing.T) {
+	dir := t.TempDir()
+
+	mustCreateFile(t, filepath.Join(dir, "proj", ".venv", "pyvenv.cfg"))
+	// Filler file deep inside the venv. If WalkDir descends, it will be
+	// visited; the SkipDir return on venv match prevents that.
+	mustCreateFile(t, filepath.Join(dir, "proj", ".venv", "lib", "python3.12", "site-packages", "foo", "bar.py"))
+
+	mock := executor.NewMock()
+	mock.SetFile(filepath.Join(dir, "proj", ".venv", "pyvenv.cfg"), []byte(""))
+
+	det := NewPythonProjectDetector(mock)
+	projects := det.ListProjects([]string{dir})
+
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project (venv without pip), got %d", len(projects))
+	}
+	if len(projects[0].Packages) != 0 {
+		t.Errorf("expected empty Packages when pip is absent, got %d", len(projects[0].Packages))
+	}
+	wantPath := filepath.Join(dir, "proj", ".venv")
+	if projects[0].Path != wantPath {
+		t.Errorf("expected path %q, got %q", wantPath, projects[0].Path)
+	}
+}
+
 func mustCreateFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
