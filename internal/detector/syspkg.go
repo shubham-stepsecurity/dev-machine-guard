@@ -412,10 +412,10 @@ func parseDpkgLine(line string) model.SystemPackage {
 	if len(parts) >= 6 && parts[5] != "" {
 		pkg.Vendor = parts[5] // Origin: "Ubuntu", "Debian", etc.
 	}
-	// parts[6] = Section — dpkg category (e.g. "libs", "non-free/libs").
-	// "non-free" prefix signals non-open-source license.
+	// parts[6] = Section — a dpkg package category (for example "libs" or
+	// "non-free/libs"), not a license expression, so map to Section field.
 	if len(parts) >= 7 && parts[6] != "" {
-		pkg.License = parts[6] // section doubles as license signal for dpkg
+		pkg.Section = parts[6]
 	}
 	if len(parts) >= 8 && parts[7] != "" {
 		// Installed-Size in dpkg is in KB

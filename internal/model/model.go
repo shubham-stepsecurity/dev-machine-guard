@@ -144,6 +144,7 @@ type SystemPackage struct {
 	Maintainer   string `json:"maintainer,omitempty"`      // Packager identity: rpm PACKAGER, dpkg Maintainer, apk maintainer, pacman Packager
 	URL          string `json:"url,omitempty"`             // Upstream project URL
 	License      string `json:"license,omitempty"`         // SPDX license expression
+	Section      string `json:"section,omitempty"`         // dpkg Section category (e.g. "libs", "non-free/libs")
 	Signature    string `json:"signature,omitempty"`       // Signature info: rpm SIGPGP/RSAHEADER, pacman Validated By
 	BuildTimeUnix int64  `json:"build_time_unix,omitempty"` // Unix epoch when package was built (rpm, apk, pacman)
 

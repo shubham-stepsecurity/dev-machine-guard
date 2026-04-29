@@ -176,7 +176,7 @@ func (d *BrewDetector) enrichFromReceipts(pkgs []model.BrewPackage, kind string)
 func (d *BrewDetector) brewPrefix() string {
 	// Standard locations
 	for _, p := range []string{"/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew"} {
-		if d.exec.FileExists(p + "/Cellar") {
+		if d.exec.DirExists(p+"/Cellar") || d.exec.DirExists(p+"/Caskroom") {
 			return p
 		}
 	}
