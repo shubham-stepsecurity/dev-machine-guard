@@ -262,8 +262,33 @@ func Pretty(w io.Writer, result *model.ScanResult, colorMode string) error {
 		fmt.Fprintln(w)
 	}
 
+	// NPM CONFIG AUDIT (compact summary; deep view via --npmrc)
+	if result.NPMRCAudit != nil {
+		printNPMRCAuditSummary(w, c, result.NPMRCAudit)
+	}
+
 	return nil
 }
+
+//nolint:errcheck // terminal output
+func printNPMRCAuditSummary(w io.Writer, c *colors, a *model.NPMRCAudit) {
+	fmt.Fprintf(w, "  %s%sNPM CONFIG AUDIT%s\n", c.purple, c.bold, c.reset)
+	if a.Available {
+		fmt.Fprintf(w, "    %snpm:%s %s @ %s\n", c.dim, c.reset, a.NPMVersion, a.NPMPath)
+	} else {
+		fmt.Fprintf(w, "    %snpm:%s not found in PATH (file-only audit)\n", c.dim, c.reset)
+	}
+	existing := 0
+	for _, f := range a.Files {
+		if f.Exists {
+			existing++
+		}
+	}
+	fmt.Fprintf(w, "    %sfiles:%s %d discovered, %d present\n", c.dim, c.reset, len(a.Files), existing)
+	fmt.Fprintf(w, "    %srun --npmrc for the deep view%s\n", c.dim, c.reset)
+	fmt.Fprintln(w)
+}
+
 
 //nolint:errcheck // terminal output
 func printSectionHeader(w io.Writer, c *colors, title string, count int) {

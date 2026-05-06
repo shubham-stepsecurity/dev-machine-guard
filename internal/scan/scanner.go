@@ -206,6 +206,15 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 		log.StepSkip("disabled (use --enable-python-scan to enable)")
 	}
 
+	// npm config audit — surface-only inventory of every .npmrc on the host
+	// plus the merged effective view npm itself would resolve. Always on;
+	// the audit is cheap (a few stat calls and at most two npm invocations).
+	log.StepStart("Auditing npm configuration")
+	start = time.Now()
+	loggedInUser, _ := exec.LoggedInUser()
+	npmrcAudit := detector.NewNPMRCDetector(exec).Detect(ctx, searchDirs, loggedInUser)
+	log.StepDone(time.Since(start))
+
 	// Ensure no nil slices (JSON must emit [] not null)
 	if aiTools == nil {
 		aiTools = []model.AITool{}
@@ -274,6 +283,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) error {
 		SnapPackages:      snapPackages,
 		FlatpakPkgManager: flatpakPkgManager,
 		FlatpakPackages:   flatpakPackages,
+		NPMRCAudit:        &npmrcAudit,
 		Summary: model.Summary{
 			AIAgentsAndToolsCount: len(aiTools),
 			IDEInstallationsCount: len(ides),

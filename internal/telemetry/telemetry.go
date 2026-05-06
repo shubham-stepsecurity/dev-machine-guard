@@ -53,6 +53,7 @@ type Payload struct {
 	SystemPackageScans   []model.SystemPackageScanResult `json:"system_package_scans"`
 	AIAgents             []model.AITool                  `json:"ai_agents"`
 	MCPConfigs           []model.MCPConfigEnterprise     `json:"mcp_configs"`
+	NPMRCAudit           *model.NPMRCAudit               `json:"npmrc_audit,omitempty"`
 
 	ExecutionLogs      *ExecutionLogs      `json:"execution_logs,omitempty"`
 	PerformanceMetrics *PerformanceMetrics `json:"performance_metrics,omitempty"`
@@ -508,6 +509,17 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 		systemPackageScans = []model.SystemPackageScanResult{}
 	}
 
+	// npm config audit — surface-only inventory of every .npmrc on the
+	// host plus the merged effective view npm itself would resolve. We
+	// use the user-aware executor so npm resolves through the logged-in
+	// user's PATH (catches nvm / fnm / brew installs that root's PATH
+	// wouldn't see).
+	log.Progress("Auditing npm configuration...")
+	npmrcLoggedIn, _ := exec.LoggedInUser()
+	npmrcAudit := detector.NewNPMRCDetector(userExec).Detect(ctx, searchDirs, npmrcLoggedIn)
+	log.Progress("  npm available: %v, files discovered: %d", npmrcAudit.Available, len(npmrcAudit.Files))
+	fmt.Fprintln(os.Stderr)
+
 	// Finalize execution logs before building payload
 	execLogsBase64 := capture.Finalize()
 	endTime := time.Now()
@@ -540,6 +552,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 		SystemPackageScans:   systemPackageScans,
 		AIAgents:             allAI,
 		MCPConfigs:           mcpConfigs,
+		NPMRCAudit:           &npmrcAudit,
 
 		ExecutionLogs: &ExecutionLogs{
 			OutputBase64: execLogsBase64,

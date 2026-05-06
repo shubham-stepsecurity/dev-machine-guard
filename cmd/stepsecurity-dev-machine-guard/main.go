@@ -1,15 +1,21 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 
 	"github.com/step-security/dev-machine-guard/internal/buildinfo"
 	"github.com/step-security/dev-machine-guard/internal/cli"
 	"github.com/step-security/dev-machine-guard/internal/config"
+	"github.com/step-security/dev-machine-guard/internal/detector"
+	"github.com/step-security/dev-machine-guard/internal/device"
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/launchd"
+	"github.com/step-security/dev-machine-guard/internal/output"
 	"github.com/step-security/dev-machine-guard/internal/progress"
 	"github.com/step-security/dev-machine-guard/internal/scan"
 	"github.com/step-security/dev-machine-guard/internal/schtasks"
@@ -160,6 +166,15 @@ func main() {
 		}
 
 	default:
+		// --npmrc: focused, verbose pretty audit of npm config only.
+		// Bypasses all other detectors for a fast (~1s) deep dive.
+		if cfg.NPMRCOnly {
+			if err := runNPMRCOnly(exec, cfg); err != nil {
+				log.Error("%v", err)
+				os.Exit(1)
+			}
+			return
+		}
 		// Community mode or auto-detect enterprise
 		switch {
 		case cfg.OutputFormatSet || cfg.HTMLOutputFile != "":
@@ -183,4 +198,48 @@ func main() {
 			}
 		}
 	}
+}
+
+// runNPMRCOnly executes only the npmrc detector and renders the verbose
+// pretty view (or JSON when --json is also passed). Skips IDE / AI / Brew /
+// Python / Node / pip detection so the run is fast and the output is
+// exclusively about npm configuration.
+func runNPMRCOnly(exec executor.Executor, cfg *cli.Config) error {
+	ctx := context.Background()
+	dev := device.Gather(ctx, exec)
+	loggedInUser, _ := exec.LoggedInUser()
+
+	searchDirs := resolveScanSearchDirs(exec, cfg.SearchDirs)
+	audit := detector.NewNPMRCDetector(exec).Detect(ctx, searchDirs, loggedInUser)
+
+	if cfg.OutputFormat == "json" {
+		return scanJSONEncoder(os.Stdout).Encode(audit)
+	}
+	output.PrettyNPMRC(os.Stdout, &audit, dev, cfg.ColorMode)
+	return nil
+}
+
+// resolveScanSearchDirs expands `$HOME` to the logged-in user's home dir
+// and leaves other entries unchanged. Mirrors the helper inside scan.Run
+// so --npmrc walks the same project tree the full scan would.
+func resolveScanSearchDirs(exec executor.Executor, dirs []string) []string {
+	resolved := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		if d == "$HOME" {
+			if u, err := exec.LoggedInUser(); err == nil {
+				d = u.HomeDir
+			}
+		}
+		resolved = append(resolved, d)
+	}
+	return resolved
+}
+
+// scanJSONEncoder returns a 2-space-indented JSON encoder that doesn't
+// HTML-escape — same conventions as the standard scan output.
+func scanJSONEncoder(w io.Writer) *json.Encoder {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	return enc
 }

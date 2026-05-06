@@ -26,6 +26,7 @@ type ScanResult struct {
 	SnapPackages      []SystemPackage `json:"snap_packages"`
 	FlatpakPkgManager *PkgManager     `json:"flatpak_package_manager,omitempty"`
 	FlatpakPackages   []SystemPackage `json:"flatpak_packages"`
+	NPMRCAudit        *NPMRCAudit     `json:"npmrc_audit,omitempty"`
 	Summary           Summary         `json:"summary"`
 }
 
@@ -232,3 +233,79 @@ func FilterUserInstalledExtensions(exts []Extension) []Extension {
 	}
 	return filtered
 }
+
+// --- npmrc audit -------------------------------------------------------------
+//
+// Surface-only inventory of every .npmrc on the host plus the merged
+// effective view npm itself would resolve. Drift detection (snapshot/diff
+// across runs) and per-project effective overrides are intentionally out
+// of scope for this iteration; see .plans/0005-npmrc-audit.md for the
+// extension points.
+
+// NPMRCAudit is the top-level structure produced by the npmrc detector.
+type NPMRCAudit struct {
+	Available      bool            `json:"npm_available"`
+	NPMVersion     string          `json:"npm_version,omitempty"`
+	NPMPath        string          `json:"npm_path,omitempty"`
+	Files          []NPMRCFile     `json:"files"`
+	Effective      *NPMRCEffective `json:"effective,omitempty"`
+	Env            []NPMRCEnvVar   `json:"env"`
+	DiscoveryError string          `json:"discovery_error,omitempty"`
+}
+
+// NPMRCFile is a single .npmrc file. Metadata is best-effort: fields that
+// could not be determined (e.g. owner_name on Windows) are omitted.
+type NPMRCFile struct {
+	Path        string       `json:"path"`
+	Scope       string       `json:"scope"` // builtin | global | user | project
+	Exists      bool         `json:"exists"`
+	Readable    bool         `json:"readable"`
+	SizeBytes   int64        `json:"size_bytes,omitempty"`
+	ModTimeUnix int64        `json:"mtime_unix,omitempty"`
+	Mode        string       `json:"mode,omitempty"`
+	OwnerUID    int          `json:"owner_uid,omitempty"`
+	OwnerName   string       `json:"owner_name,omitempty"`
+	GroupGID    int          `json:"group_gid,omitempty"`
+	GroupName   string       `json:"group_name,omitempty"`
+	SHA256      string       `json:"sha256,omitempty"`
+	SymlinkTo   string       `json:"symlink_target,omitempty"`
+	InGitRepo   bool         `json:"in_git_repo,omitempty"`
+	GitTracked  bool         `json:"git_tracked,omitempty"`
+	Entries     []NPMRCEntry `json:"entries,omitempty"`
+	ParseError  string       `json:"parse_error,omitempty"`
+}
+
+// NPMRCEntry is one parsed line of a .npmrc file. DisplayValue is always
+// safe to print: auth values are redacted to ***last4 (or *** when the
+// secret is short). The raw value is never stored — ValueSHA256 is the
+// only fingerprint kept.
+type NPMRCEntry struct {
+	Key          string   `json:"key"`
+	DisplayValue string   `json:"display_value"`
+	LineNum      int      `json:"line_num"`
+	IsArray      bool     `json:"is_array,omitempty"`
+	IsAuth       bool     `json:"is_auth,omitempty"`
+	IsEnvRef     bool     `json:"is_env_ref,omitempty"`
+	EnvRefVars   []string `json:"env_ref_vars,omitempty"`
+	ValueSHA256  string   `json:"value_sha256,omitempty"`
+	Quoted       bool     `json:"quoted,omitempty"`
+}
+
+// NPMRCEffective mirrors the merged-config view emitted by
+// `npm config ls -l --json`. Auth values are returned by npm as
+// "(protected)" — that's what we surface.
+type NPMRCEffective struct {
+	SourceByKey map[string]string `json:"source_by_key,omitempty"`
+	Config      map[string]any    `json:"config,omitempty"`
+	Error       string            `json:"error,omitempty"`
+}
+
+// NPMRCEnvVar is a single npm-relevant process environment variable.
+// Set=false records are kept so the audit shape stays stable across hosts.
+type NPMRCEnvVar struct {
+	Name         string `json:"name"`
+	Set          bool   `json:"set"`
+	DisplayValue string `json:"display_value,omitempty"`
+	ValueSHA256  string `json:"value_sha256,omitempty"`
+}
+
