@@ -236,6 +236,34 @@ func looksLikeStandardPipConfigPath(p string) bool {
 	return false
 }
 
+// isLegacyPipConfigPath returns true for paths matching the legacy pip
+// config location: `~/.pip/pip.conf` (Unix) or `%HOME%\pip\pip.ini`
+// (Windows). Detected via suffix rather than the discovery `Layer` label
+// because `pip config debug` reports the legacy path under the "user"
+// layer when pip itself is installed.
+//
+// On Windows, three locations share the `\pip\pip.ini` suffix:
+//
+//	%PROGRAMDATA%\pip\pip.ini  (global, not legacy)
+//	%APPDATA%\pip\pip.ini      (current user, not legacy)
+//	%HOME%\pip\pip.ini         (legacy)
+//
+// We discriminate by checking that the path does NOT include an
+// `\appdata\` or `\programdata\` component — both unique to the
+// non-legacy locations.
+func isLegacyPipConfigPath(p string) bool {
+	pl := strings.ToLower(p)
+	if strings.HasSuffix(pl, "/.pip/pip.conf") {
+		return true
+	}
+	if strings.HasSuffix(pl, `\pip\pip.ini`) &&
+		!strings.Contains(pl, `\appdata\`) &&
+		!strings.Contains(pl, `\programdata\`) {
+		return true
+	}
+	return false
+}
+
 // evaluateValueFindings runs rules that depend on the value of a single
 // (section, key, value) entry from a parsed file.
 func evaluateValueFindings(f model.PipConfigFile, section, key, value string, emit func(model.PipFinding)) {
@@ -507,8 +535,13 @@ func evaluateKeyPresenceFindings(_ model.PipConfigFile, _ string, _ model.PipKey
 // evaluateFileLevelFindings handles rules that depend on file metadata
 // rather than parsed values: legacy paths, mode permissions.
 func evaluateFileLevelFindings(f model.PipConfigFile, emit func(model.PipFinding)) {
-	// pip-019 — legacy ~/.pip/pip.conf or %HOME%\pip\pip.ini in use
-	if f.Layer == "user-legacy" {
+	// pip-019 — legacy ~/.pip/pip.conf or %HOME%\pip\pip.ini in use.
+	//
+	// Detected by path suffix rather than the discovery layer label,
+	// because when pip itself is installed `pip config debug` reports the
+	// legacy path under the "user" layer (pip doesn't expose the "legacy"
+	// concept). Path matching catches both cases.
+	if isLegacyPipConfigPath(f.Path) {
 		emit(model.PipFinding{
 			ID:          "pip-019",
 			Severity:    pipSevLow,

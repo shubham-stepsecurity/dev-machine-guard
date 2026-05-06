@@ -359,8 +359,13 @@ type PipSection struct {
 // PipKeyValue is a single key/value (or key/multi-value) entry inside a
 // section. Repeatable options surface as multiple Values.
 type PipKeyValue struct {
-	Key     string   `json:"key"`
-	Values  []string `json:"values"`            // len()>=1; each value is a separate logical entry
+	Key string `json:"key"`
+	// Values holds the raw, un-redacted parsed values. Used internally by
+	// the findings engine (URL.User parsing, http-scheme detection, etc.)
+	// — NEVER serialized to JSON or pretty output, since for keys like
+	// `extra-index-url` it can hold a literal `user:pass@host` URL. Use
+	// Display for any user-visible rendering.
+	Values  []string `json:"-"`
 	Display string   `json:"display,omitempty"` // human-readable single-line rendering, with creds redacted
 	LineNum int      `json:"line_num"`
 }

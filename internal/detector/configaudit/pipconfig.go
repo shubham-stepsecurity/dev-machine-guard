@@ -498,7 +498,12 @@ func (d *PipConfigDetector) captureEffective(ctx context.Context) (*model.PipEff
 		key := secKey[dot+1:]
 		full := section + "." + key
 
-		eff.Config[full] = value
+		// Pip's text output emits URL values verbatim, including any
+		// embedded `user:pass@host` userinfo. We must redact before
+		// storing — the per-file `entries` view redacts; the effective
+		// view has to as well, otherwise it becomes the credential leak
+		// the audit was supposed to prevent.
+		eff.Config[full] = redactCredsInValue(value)
 		eff.SourceByKey[full] = source
 	}
 	return eff, nil

@@ -303,3 +303,55 @@ func TestParseModeOctal(t *testing.T) {
 		}
 	}
 }
+
+func TestIsLegacyPipConfigPath(t *testing.T) {
+	cases := map[string]bool{
+		// Unix legacy
+		"/home/alice/.pip/pip.conf": true,
+		"/Users/bob/.pip/pip.conf":  true,
+		// Unix current
+		"/home/alice/.config/pip/pip.conf": false,
+		"/etc/pip.conf":                    false,
+		"/etc/xdg/pip/pip.conf":            false,
+		// macOS user
+		"/Users/bob/Library/Application Support/pip/pip.conf": false,
+		// Windows legacy (HOME-rooted, no AppData component)
+		`C:\Users\Carol\pip\pip.ini`: true,
+		// Windows current (under AppData)
+		`C:\Users\Carol\AppData\Roaming\pip\pip.ini`: false,
+		// Windows global
+		`C:\ProgramData\pip\pip.ini`: false,
+		// Random path
+		"/tmp/something/pip.conf": false,
+	}
+	for in, want := range cases {
+		if got := isLegacyPipConfigPath(in); got != want {
+			t.Errorf("isLegacyPipConfigPath(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// TestEvaluateFileLevel_Pip019_FiresOnLegacyPathRegardlessOfLayer locks
+// in the bug fix: when pip is installed, `pip config debug` reports the
+// legacy path under the `user` layer (not `user-legacy`), so the rule
+// must detect by path suffix, not by Layer field. Validated end-to-end
+// on Fedora EC2.
+func TestEvaluateFileLevel_Pip019_FiresOnLegacyPathRegardlessOfLayer(t *testing.T) {
+	for _, layer := range []string{"user", "user-legacy"} {
+		f := model.PipConfigFile{
+			Path:   "/home/test/.pip/pip.conf",
+			Layer:  layer,
+			Exists: true,
+			Mode:   "0644",
+		}
+		var fired bool
+		evaluateFileLevelFindings(f, func(fnd model.PipFinding) {
+			if fnd.ID == "pip-019" {
+				fired = true
+			}
+		})
+		if !fired {
+			t.Errorf("pip-019 must fire for legacy path under layer=%q (was missed when pip-debug reports the legacy file as 'user')", layer)
+		}
+	}
+}

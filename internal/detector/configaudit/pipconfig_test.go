@@ -244,3 +244,40 @@ install.no-build-isolation='true' from PIP_NO_BUILD_ISOLATION
 		_ = sawInfo
 	}
 }
+
+// TestParseEffective_RedactsEmbeddedCreds locks in the bug fix where
+// `pip config list -v` emits URL values verbatim — including any
+// embedded `user:pass@host` userinfo — and we used to copy them into
+// effective.config without redaction. The per-file `entries` view
+// already redacted; the merged effective view is now consistent.
+//
+// Validated end-to-end on Fedora EC2 (P3): the literal token must NOT
+// appear anywhere in the JSON output.
+func TestParseEffective_RedactsEmbeddedCreds(t *testing.T) {
+	mock := executor.NewMock()
+	mock.SetPath("pip", "/usr/bin/pip")
+	mock.SetCommand("pip 24.0\n", "", 0, "pip", "--version")
+	mock.SetCommand("", "", 0, "pip", "config", "debug")
+	// Pip's text output includes the literal credential — that's how pip
+	// renders it. Our parser must redact before storing.
+	out := "For variant 'user', will try loading '/u/.config/pip/pip.conf'.\n" +
+		"global.extra-index-url='https://__token__:LEAKED_SECRET" + at + "private.example.com/simple' from /u/.config/pip/pip.conf\n"
+	mock.SetCommand(out, "", 0, "pip", "config", "list", "-v")
+
+	d := NewPipConfigDetector(mock)
+	d.ownerLookup = fixedPipOwner()
+	d.gitTracked = func(_ context.Context, _ string) bool { return false }
+	d.inGitRepo = func(_ string) bool { return false }
+
+	audit := d.Detect(context.Background(), nil)
+	if audit.Effective == nil {
+		t.Fatal("effective view nil")
+	}
+	got := audit.Effective.Config["global.extra-index-url"]
+	if strings.Contains(got, "LEAKED_SECRET") {
+		t.Errorf("effective.config leaked credential: %q", got)
+	}
+	if !strings.Contains(got, "****") {
+		t.Errorf("effective.config should have redacted to user:****@host form, got: %q", got)
+	}
+}
