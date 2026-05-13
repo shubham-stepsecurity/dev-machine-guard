@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -59,10 +60,20 @@ type Executor interface {
 	LoggedInUser() (*user.User, error)
 	// GOOS returns the runtime operating system.
 	GOOS() string
+	// IsAppleCLTStub reports whether binPath is an Apple Command Line Tools
+	// shim (under /usr/bin/) that would trigger the macOS "install developer
+	// tools" GUI prompt when invoked. Returns false on non-darwin systems, for
+	// paths outside /usr/bin/, or when CLT is installed. Detectors must guard
+	// every Run/RunWithTimeout on /usr/bin/-resolved binaries with this check
+	// to avoid disrupting end users on machines without CLT installed.
+	IsAppleCLTStub(ctx context.Context, binPath string) bool
 }
 
 // Real implements Executor using actual OS calls.
-type Real struct{}
+type Real struct {
+	cltOnce    sync.Once
+	cltPresent bool
+}
 
 func NewReal() *Real { return &Real{} }
 
@@ -199,4 +210,50 @@ func (r *Real) LoggedInUser() (*user.User, error) {
 
 func (r *Real) GOOS() string {
 	return runtime.GOOS
+}
+
+// appleCLTStubBinaries is the explicit set of /usr/bin/ paths that Apple
+// ships as Command Line Tools shims. Invoking any of these on a Mac without
+// CLT installed pops a GUI install prompt. A "/usr/bin/" prefix check alone
+// would over-match: /usr/bin/ssh, /usr/bin/ls, /usr/bin/env etc. are base
+// system binaries that work fine without CLT.
+//
+// Extend this set when introducing a detector that invokes another /usr/bin/
+// binary Apple wraps as a CLT shim (common examples: git, make, clang,
+// clang++, cc, c++, gcc, g++, swift, swiftc, gdb, lldb).
+var appleCLTStubBinaries = map[string]struct{}{
+	"/usr/bin/python3": {},
+	"/usr/bin/pip3":    {},
+}
+
+// IsAppleCLTStub reports whether binPath is an Apple Command Line Tools shim
+// that would trigger the macOS "install developer tools" GUI prompt when
+// invoked. Returns true iff:
+//  1. GOOS is darwin,
+//  2. binPath is a known Apple CLT shim (see appleCLTStubBinaries), AND
+//  3. Xcode Command Line Tools are not installed (`xcode-select -p` fails).
+//
+// The CLT-presence result is cached per Real instance via sync.Once: the
+// first qualifying check runs `xcode-select -p` and subsequent calls reuse
+// the cached flag (a full Python scan otherwise probes several binaries).
+//
+// `xcode-select -p` itself does NOT trigger the install prompt — it just
+// prints the developer-dir path or exits non-zero when CLT is absent.
+func (r *Real) IsAppleCLTStub(ctx context.Context, binPath string) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	if _, ok := appleCLTStubBinaries[binPath]; !ok {
+		return false
+	}
+	r.cltOnce.Do(func() {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(probeCtx, "xcode-select", "-p")
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		err := cmd.Run()
+		r.cltPresent = err == nil && strings.TrimSpace(stdout.String()) != ""
+	})
+	return !r.cltPresent
 }
