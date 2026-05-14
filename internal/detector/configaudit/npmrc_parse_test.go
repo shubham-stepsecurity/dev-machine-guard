@@ -189,8 +189,11 @@ func TestIsAuthKey(t *testing.T) {
 		"_auth":                                true, // legacy unscoped
 		"username":                             true,
 		"email":                                true,
-		"cafile":                               true,
-		"cert":                                 true, // deprecated but still flagged
+		"cafile":                               false, // TLS material — file path, not a secret
+		"certfile":                             false, // TLS material — file path, not a secret
+		"keyfile":                              false, // TLS material — file path, not a secret
+		"cert":                                 false, // TLS material — file path, not a secret
+		"key":                                  false, // TLS material — file path, not a secret
 		"registry":                             false,
 		"@scope:registry":                      false,
 		"strict-ssl":                           false,

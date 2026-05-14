@@ -122,19 +122,16 @@ func buildEntry(key, value string, quoted bool, lineNum int) model.NPMRCEntry {
 //
 //	//registry.npmjs.org/:_authToken=...
 //
-// so we have to look at the part after the final `:`.
+// so we have to look at the part after the final `:`. TLS-material keys
+// (`cafile`, `certfile`, `keyfile`, `cert`, `key`) are intentionally NOT
+// included — their values are file paths, not secrets, and redacting them
+// makes the audit less useful while mislabeling them as auth material.
 var authKeySuffixes = []string{
 	"_auth",
 	"_authtoken",
 	"_password",
 	"username",
 	"email",
-	"cafile",
-	"certfile",
-	"keyfile",
-	// Deprecated but still seen in the wild:
-	"cert",
-	"key",
 }
 
 func isAuthKey(key string) bool {

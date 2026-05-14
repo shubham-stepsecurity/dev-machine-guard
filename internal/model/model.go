@@ -371,11 +371,14 @@ type PipKeyValue struct {
 }
 
 // PipEnvVar captures one PIP_* environment variable. Display is the
-// finding-grade safe-to-print form (creds redacted in URLs).
+// finding-grade safe-to-print form (creds redacted in URLs). Unset vars
+// are kept (Set=false) so the audit shape stays stable across hosts and a
+// future change-tracking layer can detect newly-set vars between runs.
 type PipEnvVar struct {
 	Name    string `json:"name"`
+	Set     bool   `json:"set"`
 	Value   string `json:"-"` // raw; never serialized
-	Display string `json:"display"`
+	Display string `json:"display,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
 }
 

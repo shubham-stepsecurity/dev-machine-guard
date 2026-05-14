@@ -139,6 +139,10 @@ func Parse(args []string) (*Config, error) {
 		i++
 	}
 
+	if cfg.NPMRCOnly && cfg.PipConfigOnly {
+		return nil, fmt.Errorf("--npmrc and --pipconfig are mutually exclusive; pick one")
+	}
+
 	return cfg, nil
 }
 

@@ -55,7 +55,7 @@ mkdir -p "$RESULTS_DIR"
 HAVE_SUDO=0
 if sudo -n true 2>/dev/null; then HAVE_SUDO=1; fi
 HAVE_NPM=$(command -v npm >/dev/null 2>&1 && echo 1 || echo 0)
-HAVE_PIP=$(command -v pip3 >/dev/null 2>&1 || command -v pip >/dev/null 2>&1 && echo 1 || echo 0)
+if command -v pip3 >/dev/null 2>&1 || command -v pip >/dev/null 2>&1; then HAVE_PIP=1; else HAVE_PIP=0; fi
 HAVE_GIT=$(command -v git >/dev/null 2>&1 && echo 1 || echo 0)
 HAVE_JQ=$(command -v jq >/dev/null 2>&1 && echo 1 || echo 0)
 

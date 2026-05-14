@@ -334,9 +334,11 @@ func (d *PipConfigDetector) discoverViaPathEnumeration(loggedInUser *user.User) 
 		// Global.
 		out = append(out, struct{ path, layer string }{"/Library/Application Support/pip/pip.conf", "global"})
 		if homeDir != "" {
-			// User (current — Library path is preferred when its directory exists)
+			// pip itself prefers ~/Library/Application Support/pip when that
+			// directory exists, and otherwise reads ~/.config/pip. We surface
+			// both candidates: the audit is inventory-only, and having a
+			// stray config at the unused path is itself worth showing.
 			out = append(out, struct{ path, layer string }{filepath.Join(homeDir, "Library", "Application Support", "pip", "pip.conf"), "user"})
-			// Fallback (when the Library dir doesn't exist).
 			out = append(out, struct{ path, layer string }{filepath.Join(homeDir, ".config", "pip", "pip.conf"), "user"})
 			// Legacy.
 			out = append(out, struct{ path, layer string }{filepath.Join(homeDir, ".pip", "pip.conf"), "user-legacy"})
@@ -520,15 +522,13 @@ func (d *PipConfigDetector) collectEnvVars() []model.PipEnvVar {
 	out := make([]model.PipEnvVar, 0, len(pipEnvVarsToWatch))
 	for _, name := range pipEnvVarsToWatch {
 		v := d.exec.Getenv(name)
-		if v == "" {
-			continue
+		ev := model.PipEnvVar{Name: name, Set: v != ""}
+		if v != "" {
+			ev.Value = v
+			ev.Display = redactCredsInValue(v)
+			ev.SHA256 = hashCredential(v)
 		}
-		out = append(out, model.PipEnvVar{
-			Name:    name,
-			Value:   v,
-			Display: redactCredsInValue(v),
-			SHA256:  hashCredential(v),
-		})
+		out = append(out, ev)
 	}
 	return out
 }
