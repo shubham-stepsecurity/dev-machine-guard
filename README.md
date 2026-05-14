@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/step-security/dev-machine-guard/actions/workflows/tests.yml"><img src="https://github.com/step-security/dev-machine-guard/actions/workflows/tests.yml/badge.svg?branch=main" alt="Tests"></a>
+  <a href="https://github.com/step-security/dev-machine-guard/actions/workflows/gosec.yml"><img src="https://github.com/step-security/dev-machine-guard/actions/workflows/gosec.yml/badge.svg?branch=main" alt="Gosec"></a>
   <a href="https://github.com/step-security/dev-machine-guard/actions/workflows/release.yml"><img src="https://github.com/step-security/dev-machine-guard/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="https://goreportcard.com/report/github.com/step-security/dev-machine-guard"><img src="https://goreportcard.com/badge/github.com/step-security/dev-machine-guard" alt="Go Report Card"></a>
   <a href="https://pkg.go.dev/github.com/step-security/dev-machine-guard"><img src="https://pkg.go.dev/badge/github.com/step-security/dev-machine-guard.svg" alt="Go Reference"></a>
