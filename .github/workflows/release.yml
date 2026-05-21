@@ -85,6 +85,40 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
 
+      - name: Build MSIs (x64 + arm64)
+        # WiX 4 runs on .NET, so we install it on the same ubuntu-latest
+        # runner. Output: dist/stepsecurity-dev-machine-guard-<v>-x64.msi
+        # and the arm64 counterpart. Both wrap the goreleaser-produced
+        # .exe and embed it via CAB compression. No PowerShell anywhere.
+        run: |
+          dotnet tool install --global wix --version 4.0.5
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          wix --version
+
+          version="${{ steps.version.outputs.version }}"
+
+          win_amd64_exe=$(find dist -type f -name '*.exe' -path '*windows_amd64*' | head -1)
+          win_arm64_exe=$(find dist -type f -name '*.exe' -path '*windows_arm64*' | head -1)
+          if [ ! -f "$win_amd64_exe" ] || [ ! -f "$win_arm64_exe" ]; then
+            echo "::error::Windows .exe artifacts not found under dist/"
+            find dist -type f -name '*.exe'
+            exit 1
+          fi
+
+          wix build packaging/windows/Product.wxs \
+            -arch x64 \
+            -d Arch=x64 \
+            -d Version="$version" \
+            -d BinaryPath="$PWD/$win_amd64_exe" \
+            -out "dist/stepsecurity-dev-machine-guard-${version}-x64.msi"
+
+          wix build packaging/windows/Product.wxs \
+            -arch arm64 \
+            -d Arch=arm64 \
+            -d Version="$version" \
+            -d BinaryPath="$PWD/$win_arm64_exe" \
+            -out "dist/stepsecurity-dev-machine-guard-${version}-arm64.msi"
+
       - name: Locate binaries and packages
         id: binaries
         run: |
@@ -99,7 +133,10 @@ jobs:
           RPM_AMD64=$(find dist -type f -name '*-amd64.rpm' | head -1)
           RPM_ARM64=$(find dist -type f -name '*-arm64.rpm' | head -1)
 
-          for label in "darwin:${DARWIN}" "windows_amd64:${WIN_AMD64}" "windows_arm64:${WIN_ARM64}" "linux_amd64:${LINUX_AMD64}" "linux_arm64:${LINUX_ARM64}" "deb_amd64:${DEB_AMD64}" "deb_arm64:${DEB_ARM64}" "rpm_amd64:${RPM_AMD64}" "rpm_arm64:${RPM_ARM64}"; do
+          MSI_X64=$(find dist -type f -name '*-x64.msi' | head -1)
+          MSI_ARM64=$(find dist -type f -name '*-arm64.msi' | head -1)
+
+          for label in "darwin:${DARWIN}" "windows_amd64:${WIN_AMD64}" "windows_arm64:${WIN_ARM64}" "linux_amd64:${LINUX_AMD64}" "linux_arm64:${LINUX_ARM64}" "deb_amd64:${DEB_AMD64}" "deb_arm64:${DEB_ARM64}" "rpm_amd64:${RPM_AMD64}" "rpm_arm64:${RPM_ARM64}" "msi_x64:${MSI_X64}" "msi_arm64:${MSI_ARM64}"; do
             name="${label%%:*}"
             path="${label#*:}"
             if [ -z "$path" ] || [ ! -f "$path" ]; then
@@ -118,6 +155,8 @@ jobs:
           echo "deb_arm64=$DEB_ARM64" >> "$GITHUB_OUTPUT"
           echo "rpm_amd64=$RPM_AMD64" >> "$GITHUB_OUTPUT"
           echo "rpm_arm64=$RPM_ARM64" >> "$GITHUB_OUTPUT"
+          echo "msi_x64=$MSI_X64" >> "$GITHUB_OUTPUT"
+          echo "msi_arm64=$MSI_ARM64" >> "$GITHUB_OUTPUT"
 
       - name: Sign artifacts with Sigstore
         shell: bash
@@ -156,6 +195,20 @@ jobs:
             "${{ steps.binaries.outputs.rpm_amd64 }}.bundle"
           sign_with_retry "${{ steps.binaries.outputs.rpm_arm64 }}" \
             "${{ steps.binaries.outputs.rpm_arm64 }}.bundle"
+          sign_with_retry "${{ steps.binaries.outputs.msi_x64 }}" \
+            "${{ steps.binaries.outputs.msi_x64 }}.bundle"
+          sign_with_retry "${{ steps.binaries.outputs.msi_arm64 }}" \
+            "${{ steps.binaries.outputs.msi_arm64 }}.bundle"
+
+      - name: Upload MSIs to draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ steps.release.outputs.tag }}" \
+            "${{ steps.binaries.outputs.msi_x64 }}" \
+            "${{ steps.binaries.outputs.msi_arm64 }}" \
+            --clobber
+
       - name: Upload cosign bundles
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -170,6 +223,8 @@ jobs:
             "${{ steps.binaries.outputs.deb_arm64 }}.bundle" \
             "${{ steps.binaries.outputs.rpm_amd64 }}.bundle" \
             "${{ steps.binaries.outputs.rpm_arm64 }}.bundle" \
+            "${{ steps.binaries.outputs.msi_x64 }}.bundle" \
+            "${{ steps.binaries.outputs.msi_arm64 }}.bundle" \
             --clobber
 
       - name: Attest build provenance
@@ -185,3 +240,5 @@ jobs:
             ${{ steps.binaries.outputs.deb_arm64 }}
             ${{ steps.binaries.outputs.rpm_amd64 }}
             ${{ steps.binaries.outputs.rpm_arm64 }}
+            ${{ steps.binaries.outputs.msi_x64 }}
+            ${{ steps.binaries.outputs.msi_arm64 }}

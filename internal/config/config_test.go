@@ -49,8 +49,7 @@ func TestIsPlaceholder(t *testing.T) {
 func TestSaveAndLoad(t *testing.T) {
 	// Use a temp directory
 	tmpDir := t.TempDir()
-	origConfigDir := configDir
-	// Override configDir for test
+	// Override the config dir resolution for this test by redirecting HOME.
 	tmpConfigPath := filepath.Join(tmpDir, "config.json")
 
 	cfg := &ConfigFile{
@@ -89,8 +88,6 @@ func TestSaveAndLoad(t *testing.T) {
 	if len(loaded.SearchDirs) != 2 {
 		t.Errorf("search_dirs: expected 2 dirs, got %d", len(loaded.SearchDirs))
 	}
-
-	_ = origConfigDir
 }
 
 func TestConfigFile_JSON(t *testing.T) {

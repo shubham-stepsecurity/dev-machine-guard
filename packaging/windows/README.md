@@ -1,0 +1,119 @@
+# MSI packaging
+
+This directory holds the WiX 4 manifest used to wrap the Windows binary
+into a signed MSI for SCCM / Intune / Group Policy deployments.
+
+## Local build
+
+Requires **WiX 4** (cross-platform .NET tool — works on macOS / Linux /
+Windows):
+
+```bash
+dotnet tool install --global wix --version 4.0.5
+```
+
+Then from the repo root:
+
+```bash
+# Build the Windows binaries first.
+make build-windows                            # produces stepsecurity-dev-machine-guard.exe
+
+# Build the x64 MSI.
+make build-msi-amd64                          # produces dist/stepsecurity-dev-machine-guard-x64.msi
+```
+
+For arm64 (less common but supported):
+
+```bash
+GOARCH=arm64 make build-windows
+make build-msi-arm64
+```
+
+## What the MSI does
+
+| Step | Mechanism |
+|------|-----------|
+| Drop `.exe` to `C:\Program Files\StepSecurity\` | MSI standard `InstallFiles` |
+| Write tenant config to `C:\ProgramData\StepSecurity\config.json` | Custom action invokes `.exe configure --non-interactive ...` |
+| Register Windows scheduled task | Custom action invokes `.exe install` (which shells `schtasks.exe`) |
+| On uninstall: remove scheduled task | Custom action invokes `.exe uninstall` |
+
+**`powershell.exe` is never spawned.** All work flows: `msiexec` →
+`stepsecurity-dev-machine-guard.exe` → `schtasks.exe`. This matters in
+customer environments where EDR blocks PowerShell egress.
+
+## How tenants pass credentials
+
+Two equivalent paths — pick one in your SCCM Application's install
+command:
+
+### Inline (simplest)
+
+```cmd
+msiexec /i StepSecurity-DMG-x64.msi /qn ^
+  CUSTOMERID="acme-corp" ^
+  APIENDPOINT="https://api.stepsecurity.io" ^
+  APIKEY="sk_..." ^
+  SCANFREQUENCY=4 ^
+  /l*v "%TEMP%\dmg-install.log"
+```
+
+Caveat: the API key appears in `AppEnforce.log` on every endpoint when
+`/l*v` is enabled. SCCM's default logging usually keeps it out, but
+verbose troubleshooting will surface it.
+
+### Pre-staged bootstrap file (recommended for prod)
+
+Drop a JSON config via GPO / Intune File preferences first:
+
+```json
+{
+  "customer_id": "acme-corp",
+  "api_endpoint": "https://api.stepsecurity.io",
+  "api_key": "sk_...",
+  "scan_frequency_hours": "4"
+}
+```
+
+…at `C:\ProgramData\StepSecurity\bootstrap.json`, then deploy the MSI:
+
+```cmd
+msiexec /i StepSecurity-DMG-x64.msi /qn ^
+  BOOTSTRAPFILE="C:\ProgramData\StepSecurity\bootstrap.json"
+```
+
+Key never traverses the msiexec command line — survives `/l*v` logging
+clean.
+
+## Upgrades
+
+Each release ships a new MSI with the **same `UpgradeCode`** and a
+higher `Version`. Windows Installer treats the install as a Major
+Upgrade: silent uninstall of the old version (scheduled task removed
+via our `uninstall` custom action) followed by install of the new one,
+atomically. SCCM admins use the **supersedence** flow to point the new
+Application at the old one — no scripting required.
+
+The per-tenant `config.json` is **not** touched by upgrades — it lives
+under `C:\ProgramData\StepSecurity\` which MSI doesn't manage. Tenants
+stay configured across version bumps.
+
+## Detection method
+
+SCCM auto-derives the detection rule from the MSI's `ProductCode`. No
+custom script needed. The `UpgradeCode` is stable across versions; the
+`ProductCode` rotates per build (WiX generates it automatically).
+
+## GUIDs
+
+The `UpgradeCode`s in `Product.wxs` are **load-bearing constants** —
+never change them. They identify the product family across all current
+and future versions:
+
+| Platform | UpgradeCode |
+|----------|-------------|
+| x64      | `65AE0FC0-2070-4F40-B0CA-413637F94121` |
+| arm64    | `99C4A108-6A71-4006-8AA7-F3D14DA045A9` |
+
+If either ever changes, every existing deployment will see the new MSI
+as an unrelated product and refuse to upgrade.

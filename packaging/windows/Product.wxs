@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  StepSecurity Dev Machine Guard — MSI manifest.
+
+  Single source for both x64 and arm64 MSIs. The build driver (Makefile /
+  CI) supplies preprocessor variables:
+
+    -d Version=<semver>       e.g. 1.8.2
+    -d BinaryPath=<path>      path to stepsecurity-dev-machine-guard.exe
+    -d Arch=<x64|arm64>       selects InstallScope + UpgradeCode
+
+  Designed for SCCM/Intune deployment under environments where PowerShell
+  egress is blocked by EDR. Custom actions invoke the .exe directly via
+  msiexec — powershell.exe is never spawned anywhere in install/upgrade/
+  uninstall flows.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <?if $(var.Arch) = "x64" ?>
+    <?define UpgradeCode = "65AE0FC0-2070-4F40-B0CA-413637F94121" ?>
+    <?define ProgramFiles = "ProgramFiles64Folder" ?>
+    <?define ProductName = "StepSecurity Dev Machine Guard" ?>
+  <?elseif $(var.Arch) = "arm64" ?>
+    <?define UpgradeCode = "99C4A108-6A71-4006-8AA7-F3D14DA045A9" ?>
+    <?define ProgramFiles = "ProgramFiles64Folder" ?>
+    <?define ProductName = "StepSecurity Dev Machine Guard (ARM64)" ?>
+  <?else?>
+    <?error Unknown Arch: must be x64 or arm64 ?>
+  <?endif?>
+
+  <Package
+      Name="$(var.ProductName)"
+      Manufacturer="StepSecurity"
+      Version="$(var.Version)"
+      UpgradeCode="$(var.UpgradeCode)"
+      Scope="perMachine"
+      Compressed="yes"
+      InstallerVersion="500">
+
+    <!-- Major upgrade: same UpgradeCode + higher Version triggers an
+         atomic uninstall-old / install-new during a single MSI transaction.
+         Schedule="afterInstallInitialize" runs the uninstall pass before
+         CostFinalize so existing files don't conflict with new ones. -->
+    <MajorUpgrade
+        Schedule="afterInstallInitialize"
+        DowngradeErrorMessage="A newer version of [ProductName] is already installed."/>
+
+    <!-- Embedded CAB keeps everything in a single .msi file. SCCM
+         distributes one artifact, not a .msi + sidecar .cab. -->
+    <MediaTemplate EmbedCab="yes"/>
+
+    <!-- Properties exposed on the msiexec command line. Secure="yes"
+         allows them to flow through UAC elevation; Hidden="yes" on
+         APIKEY keeps it out of the MSI property table dumps (it still
+         appears in verbose execution logs — use BOOTSTRAPFILE for full
+         secrecy; see docs/deploying-via-sccm.md). -->
+    <Property Id="CUSTOMERID"    Secure="yes"/>
+    <Property Id="APIENDPOINT"   Secure="yes"/>
+    <Property Id="APIKEY"        Secure="yes" Hidden="yes"/>
+    <Property Id="SCANFREQUENCY" Secure="yes" Value="4"/>
+    <Property Id="BOOTSTRAPFILE" Secure="yes"/>
+
+    <!-- Empty disable=do-not-allow-modify in Add/Remove Programs.
+         Customers manage via SCCM, not via the user-facing ARP. -->
+    <Property Id="ARPNOMODIFY" Value="1"/>
+
+    <!-- File payload: a single .exe under C:\Program Files\StepSecurity\.
+         The Source path resolves via $(var.BinaryPath) at build time. -->
+    <StandardDirectory Id="$(var.ProgramFiles)">
+      <Directory Id="INSTALLFOLDER" Name="StepSecurity">
+        <Component Id="MainBinary" Bitness="always64">
+          <File Id="DMGBinary"
+                Source="$(var.BinaryPath)"
+                Name="stepsecurity-dev-machine-guard.exe"
+                KeyPath="yes"/>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Dev Machine Guard" Level="1">
+      <ComponentRef Id="MainBinary"/>
+    </Feature>
+
+    <!--
+      ================================================================
+      Custom Actions
+
+      All three CAs are immediate (run in msiexec's own context, which is
+      elevated/SYSTEM under SCCM) so we avoid the CustomActionData dance
+      that deferred CAs require. ExeCommand interpolates [PROPERTY] tokens
+      at sequence time. Return="check" makes a non-zero exit roll back
+      the install transaction.
+      ================================================================
+    -->
+
+    <!-- Configure with inline credentials: runs when APIKEY is set and
+         BOOTSTRAPFILE is not. Tenant config (customer ID, endpoint, key,
+         frequency) comes from msiexec command line. -->
+    <CustomAction Id="RunConfigureInline"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='"[INSTALLFOLDER]stepsecurity-dev-machine-guard.exe" configure --non-interactive --customer-id "[CUSTOMERID]" --api-endpoint "[APIENDPOINT]" --api-key "[APIKEY]" --scan-frequency "[SCANFREQUENCY]"'
+                  Execute="immediate"
+                  Return="check"/>
+
+    <!-- Configure from a pre-staged JSON: runs when BOOTSTRAPFILE is set.
+         Recommended for SCCM since the API key never appears on the
+         msiexec command line (and therefore never in AppEnforce.log). -->
+    <CustomAction Id="RunConfigureFromFile"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='"[INSTALLFOLDER]stepsecurity-dev-machine-guard.exe" configure --non-interactive --from-file "[BOOTSTRAPFILE]"'
+                  Execute="immediate"
+                  Return="check"/>
+
+    <!-- Register the Windows Task Scheduler entry via the binary's own
+         `install` subcommand. Internally that shells out to schtasks.exe;
+         no PowerShell, no .NET, no WMI. -->
+    <CustomAction Id="RunInstallScheduledTask"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='"[INSTALLFOLDER]stepsecurity-dev-machine-guard.exe" install'
+                  Execute="immediate"
+                  Return="check"/>
+
+    <!-- Uninstall path: remove the scheduled task before MSI removes the
+         .exe. Return="ignore" so a missing task (already removed manually)
+         doesn't block uninstall. -->
+    <CustomAction Id="RunUninstallScheduledTask"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='"[INSTALLFOLDER]stepsecurity-dev-machine-guard.exe" uninstall'
+                  Execute="immediate"
+                  Return="ignore"/>
+
+    <!--
+      InstallExecuteSequence: where each CA fires in the MSI sequence.
+
+      On install (NOT Installed):
+        InstallFiles → RunConfigureFromFile OR RunConfigureInline → RunInstallScheduledTask
+      On uninstall (REMOVE="ALL"):
+        RunUninstallScheduledTask → RemoveFiles
+      On major upgrade:
+        The MajorUpgrade element schedules the old version's uninstall
+        first (RunUninstallScheduledTask from the old MSI fires), then
+        the new install path runs.
+    -->
+    <InstallExecuteSequence>
+      <!-- Prefer file-based configure when BOOTSTRAPFILE is provided.
+           Inline runs only when BOOTSTRAPFILE is empty AND APIKEY is set. -->
+      <Custom Action="RunConfigureFromFile"
+              After="InstallFiles"
+              Condition="BOOTSTRAPFILE AND NOT Installed"/>
+      <Custom Action="RunConfigureInline"
+              After="RunConfigureFromFile"
+              Condition="APIKEY AND NOT BOOTSTRAPFILE AND NOT Installed"/>
+      <Custom Action="RunInstallScheduledTask"
+              After="RunConfigureInline"
+              Condition="NOT Installed"/>
+      <Custom Action="RunUninstallScheduledTask"
+              Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot;"/>
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>
