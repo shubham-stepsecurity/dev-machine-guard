@@ -206,9 +206,14 @@ jobs:
           }
           Write-Host "[OK] Binary removed"
 
-          # Scheduled task should be gone
+          # Scheduled task should be gone. Capture the exit code into a
+          # local — PowerShell uses $LASTEXITCODE from the last native call
+          # as the script's exit code, so we MUST clear it (via 'exit 0'
+          # below) once we've made our decision, otherwise the step is
+          # marked failed despite all checks passing.
           schtasks /query /tn $task 2>&1 | Out-Null
-          if ($LASTEXITCODE -eq 0) {
+          $schtasksExit = $LASTEXITCODE
+          if ($schtasksExit -eq 0) {
             Write-Host "::error::Scheduled task still registered after uninstall"
             exit 1
           }
@@ -217,6 +222,8 @@ jobs:
           # Note: C:\ProgramData\StepSecurity\config.json intentionally persists
           # across uninstall — it's tenant config, not MSI-managed payload. This
           # mirrors the documented behavior in docs/deploying-via-sccm.md.
+
+          exit 0
 
       - name: Upload install logs on failure
         if: failure()
