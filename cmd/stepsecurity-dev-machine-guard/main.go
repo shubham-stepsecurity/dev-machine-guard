@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	aiagentscli "github.com/step-security/dev-machine-guard/internal/aiagents/cli"
@@ -20,7 +22,9 @@ import (
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/launchd"
 	"github.com/step-security/dev-machine-guard/internal/output"
+	"github.com/step-security/dev-machine-guard/internal/paths"
 	"github.com/step-security/dev-machine-guard/internal/progress"
+	"github.com/step-security/dev-machine-guard/internal/progress/filelog"
 	"github.com/step-security/dev-machine-guard/internal/scan"
 	"github.com/step-security/dev-machine-guard/internal/schtasks"
 	"github.com/step-security/dev-machine-guard/internal/systemd"
@@ -84,6 +88,40 @@ func main() {
 
 	exec := executor.NewReal()
 
+	// Install dir resolution (see internal/paths.Home for the canonical
+	// chain): --install-dir CLI flag > $STEPSECURITY_HOME env var >
+	// install_dir config field > ~/.stepsecurity default. The CLI flag
+	// wins because it is the most explicit per-invocation override the
+	// operator can supply. We feed it to paths via SetOverride; an
+	// explicit `--install-dir=` (empty) is preserved and short-circuits
+	// the path computation below to disable file logging for this run.
+	//
+	// The capture is installed before the logger so every subsequent
+	// stderr write — including the pipe-tee in
+	// internal/telemetry/logcapture.go, which nests inside this one —
+	// flows through to disk.
+	if cfg.InstallDirSet {
+		paths.SetOverride(cfg.InstallDir) // may be "" = disabled
+	}
+	installDir := paths.Home()
+	disabled := cfg.InstallDirSet && cfg.InstallDir == ""
+	logFilePath := ""
+	if !disabled && installDir != "" {
+		logFilePath = filepath.Join(installDir, filelog.Filename)
+		// Pre-rotate BOTH files unconditionally. In interactive mode the
+		// stderr rotation is redundant with filelog.Start's own rotation
+		// pass (Start re-checks and no-ops on a missing path); in service
+		// mode StartIfEligible early-returns and Start never runs, so this
+		// explicit call is the only thing keeping agent.error.log bounded
+		// when the OS-level scheduler redirect is writing it. agent.log
+		// has the same property — the agent never writes it directly, so
+		// the only opportunity to cap it is at startup.
+		filelog.RotateIfOverCap(logFilePath, filelog.DefaultMaxBytes)
+		filelog.RotateIfOverCap(filepath.Join(installDir, filelog.StdoutFilename), filelog.DefaultMaxBytes)
+	}
+	capture, captureErr := filelog.StartIfEligible(logFilePath, filelog.DefaultMaxBytes)
+	defer func() { _ = capture.Stop() }()
+
 	// Log level resolution: default info → config file → CLI flag → --verbose → JSON override.
 	level := progress.LevelInfo
 	if config.LogLevel != "" {
@@ -104,6 +142,23 @@ func main() {
 		level = progress.LevelError
 	}
 	log := progress.NewLogger(level)
+	if captureErr != nil {
+		// Non-fatal: a read-only $HOME shouldn't block the run.
+		log.Warn("file logging disabled: %v", captureErr)
+	}
+
+	// Migration heads-up: if the operator has moved the install dir but
+	// the legacy ~/.stepsecurity still has agent state, surface that so
+	// they can decide whether to copy over old diagnostic files. Don't
+	// auto-move — too risky for v1 (silent overwrites, races with other
+	// processes, perms changes). Just point at the leftovers.
+	legacy := paths.LegacyHome()
+	if !disabled && legacy != "" && installDir != "" && installDir != legacy {
+		if leftovers := findLegacyLeftovers(legacy); len(leftovers) > 0 {
+			log.Warn("install dir is %s but the legacy default %s still has files: %s — copy them over manually if you want their history.",
+				installDir, legacy, strings.Join(leftovers, ", "))
+		}
+	}
 	log.Debug("resolved log level: %s (config=%q cli=%q verbose=%v output=%s)",
 		level, config.LogLevel, cfg.LogLevel, cfg.Verbose, cfg.OutputFormat)
 	log.Debug("config loaded: enterprise=%v api_endpoint=%q scan_freq=%q search_dirs=%v log_level=%q",
@@ -113,9 +168,38 @@ func main() {
 
 	switch cfg.Command {
 	case "configure":
-		if err := config.RunConfigure(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+		// Non-interactive path: any explicit config flag, an explicit
+		// --non-interactive, OR the DMG_API_KEY env var route configure
+		// through the no-prompt code path. This is how MSI/SCCM/Intune
+		// custom actions drive configuration — they can't talk to stdin.
+		opts := config.NonInteractiveOptions{
+			FromFile:      cfg.ConfigFromFile,
+			CustomerID:    cfg.ConfigCustomerID,
+			APIEndpoint:   cfg.ConfigAPIEndpoint,
+			APIKey:        cfg.ConfigAPIKey,
+			ScanFrequency: cfg.ConfigScanFrequency,
+		}
+		if opts.APIKey == "" {
+			// Env-var fallback keeps the secret off the msiexec command
+			// line (which lands in AppEnforce.log on every endpoint).
+			opts.APIKey = os.Getenv("DMG_API_KEY")
+		}
+		// Only forward --search-dirs to configure when the user actually
+		// passed it on this invocation. (cli.Parse defaults SearchDirs to
+		// ["$HOME"] for the scan path, which we must not persist here.)
+		if len(cfg.SearchDirs) > 0 && !(len(cfg.SearchDirs) == 1 && cfg.SearchDirs[0] == "$HOME") {
+			opts.SearchDirs = cfg.SearchDirs
+		}
+		if cfg.NonInteractive || opts.HasAny() {
+			if err := config.RunConfigureNonInteractive(opts); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := config.RunConfigure(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
 		}
 
 	case "configure show":
@@ -175,8 +259,18 @@ func main() {
 		}
 
 		if telemetryErr != nil {
-			log.Error("%v", telemetryErr)
-			os.Exit(1)
+			if cfg.IgnoreTelemetryError {
+				// Opt-in tolerance for MSI/SCCM/Intune deployments: the
+				// scheduled task is already registered and will retry
+				// telemetry on its next firing, so a transient first-run
+				// network hiccup shouldn't roll back the whole install.
+				// Default (dev-workflow) behavior remains exit non-zero
+				// to surface real misconfigurations during interactive use.
+				log.Warn("initial telemetry failed (%v) — the scheduled task will retry on its next firing", telemetryErr)
+			} else {
+				log.Error("%v", telemetryErr)
+				os.Exit(1)
+			}
 		}
 		runHookStateReconcile(exec, log)
 
@@ -309,6 +403,28 @@ func scanJSONEncoder(w io.Writer) *json.Encoder {
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	return enc
+}
+
+// findLegacyLeftovers checks the legacy ~/.stepsecurity dir for agent
+// files the operator may have moved (intentionally) to a new install
+// dir. Returns basenames of present diagnostic files (config.json is
+// excluded — it must stay at the legacy path as the bootstrap, so its
+// presence there is expected and not a leftover to migrate).
+func findLegacyLeftovers(legacy string) []string {
+	candidates := []string{
+		"agent.error.log",
+		"agent.error.log.prev",
+		"agent.log",
+		"agent.log.prev",
+		"ai-agent-hook-errors.jsonl",
+	}
+	var found []string
+	for _, name := range candidates {
+		if _, err := os.Stat(filepath.Join(legacy, name)); err == nil {
+			found = append(found, name)
+		}
+	}
+	return found
 }
 
 // runHookStateReconcile polls agent-api for the desired AI-agent hook
