@@ -108,6 +108,12 @@ type PerformanceMetrics struct {
 //	[scanning] Device ID (Serial): ...
 //	...
 func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err error) {
+	// cancelRun signals the heartbeat goroutine to exit. The post-goroutine
+	// defer below does cancel-then-wait so heartbeat shutdown is clean on
+	// the happy path. This top-level defer is a safety net for early
+	// returns (lock-acquire failure, etc.) that bail before the goroutine
+	// is even spawned — in that case cancelRun must still run so the ctx
+	// is released. Double-cancel on the normal path is a no-op.
 	ctx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 	startTime := time.Now()
@@ -258,7 +264,6 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 	// Heartbeat goroutine: pushes status_info on a ticker so a long-running
 	// phase (brew on a 200k-package macbook, syspkg on a fat dpkg machine)
 	// still surfaces progress to the console between phase boundaries.
-	// Stops when Run() returns via cancelRun (deferred at top).
 	heartbeatDone := make(chan struct{})
 	go func() {
 		defer close(heartbeatDone)
@@ -273,10 +278,14 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 			}
 		}
 	}()
-	// Ensure the heartbeat goroutine has exited before Run returns. The
-	// outer defer cancelRun() signals it; this defer makes the wait explicit
-	// so a test that watches goroutine count sees a clean shutdown.
-	defer func() { <-heartbeatDone }()
+	// Shut the heartbeat down cleanly on return. Order matters: cancel
+	// first so the goroutine sees ctx.Done() and exits, THEN wait for it
+	// to close heartbeatDone. Splitting these into two `defer` statements
+	// would deadlock — LIFO would block on the wait before cancel fires.
+	defer func() {
+		cancelRun()
+		<-heartbeatDone
+	}()
 
 	// Detect logged-in user for running commands as the real user when root.
 	// Skip "root" — if LoggedInUser() fell back to CurrentUser(), delegating
@@ -469,6 +478,10 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 
 		log.Progress("Scanning Python global packages...")
 		pyScanner := detector.NewPythonScanner(userExec, log)
+		// Stream per-PM sub-progress ("scanning pip3" / "scanning conda" /
+		// "scanning uv") into the phase tracker so heartbeats surface where
+		// inside the python phase a slow pip3 list is stuck.
+		pyScanner.ProgressHook = func(detail string) { tracker.UpdateDetail(detail) }
 		pythonGlobalPkgs = pyScanner.ScanGlobalPackages(ctx)
 		log.Progress("  Found %d Python global package source(s)", len(pythonGlobalPkgs))
 
@@ -573,6 +586,10 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 
 		log.Progress("Scanning globally installed packages...")
 		nodeScanner := detector.NewNodeScanner(exec, log, loggedInUsername)
+		// Stream sub-progress so heartbeats show "project 12 of 47" /
+		// "global: yarn" during the long-running node phase. Both
+		// ScanGlobalPackages and ScanProjects share this hook.
+		nodeScanner.ProgressHook = func(detail string) { tracker.UpdateDetail(detail) }
 		globalPkgs = nodeScanner.ScanGlobalPackages(ctx)
 		log.Progress("  Found %d global package location(s)", len(globalPkgs))
 		fmt.Fprintln(os.Stderr)
@@ -695,11 +712,18 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 		},
 	}
 
-	// Upload to S3
+	// Upload to S3 — tracked as the final phase. The Payload's StatusInfo
+	// above is intentionally snapshotted *before* this phase starts (the
+	// payload can't describe its own upload), so this phase only appears
+	// on the run-status row via heartbeats and the post-upload progress
+	// post below.
+	tracker.Start("telemetry_upload")
 	log.Progress("Requesting upload URL from backend...")
-	if err := uploadToS3(ctx, log, payload, executionID); err != nil {
+	if err := uploadToS3(ctx, log, payload, executionID, tracker); err != nil {
 		return fmt.Errorf("uploading telemetry: %w", err)
 	}
+	tracker.Finish()
+	postPhase()
 
 	fmt.Fprintln(os.Stderr)
 	log.Progress("Telemetry collection completed successfully")
@@ -732,7 +756,17 @@ func totalSystemPackagesCount(scans []model.SystemPackageScanResult) int {
 	return total
 }
 
-func uploadToS3(ctx context.Context, log *progress.Logger, payload *Payload, executionID string) error {
+func uploadToS3(ctx context.Context, log *progress.Logger, payload *Payload, executionID string, tracker *PhaseTracker) error {
+	// updateDetail forwards sub-progress to the heartbeat goroutine via the
+	// tracker. Tolerates nil so the function stays callable from tests that
+	// don't supply a tracker.
+	updateDetail := func(detail string) {
+		if tracker != nil {
+			tracker.UpdateDetail(detail)
+		}
+	}
+
+	updateDetail("compressing payload")
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshaling payload: %w", err)
@@ -745,6 +779,7 @@ func uploadToS3(ctx context.Context, log *progress.Logger, payload *Payload, exe
 	if err != nil {
 		return fmt.Errorf("compressing payload: %w", err)
 	}
+	updateDetail("requesting upload URL")
 
 	// Request upload URL
 	reqBody, _ := json.Marshal(map[string]any{
@@ -793,6 +828,7 @@ func uploadToS3(ctx context.Context, log *progress.Logger, payload *Payload, exe
 	uploaded := false
 	var lastFailure string
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		updateDetail(fmt.Sprintf("uploading to S3 (attempt %d/%d, %d KiB)", attempt, maxRetries, len(compressedPayload)/1024))
 		uploadStart := time.Now()
 		putReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPut, urlResp.UploadURL, bytes.NewReader(compressedPayload))
 		if reqErr != nil {
@@ -875,6 +911,7 @@ func uploadToS3(ctx context.Context, log *progress.Logger, payload *Payload, exe
 	}
 
 	// Notify backend
+	updateDetail("notifying backend")
 	log.Progress("Notifying backend of upload...")
 	notifyBody, _ := json.Marshal(map[string]string{
 		"s3_key":       urlResp.S3Key,

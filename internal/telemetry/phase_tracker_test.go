@@ -108,6 +108,74 @@ func TestPhaseTracker_SnapshotIsDefensiveCopy(t *testing.T) {
 	}
 }
 
+func TestPhaseTracker_UpdateDetailFoldsIntoCurrentPhase(t *testing.T) {
+	pt := NewPhaseTracker()
+
+	// Detail before Start is a no-op — keeps callers from leaking stale
+	// per-phase strings into the next phase.
+	pt.UpdateDetail("dropped")
+	if got := pt.Snapshot(); got.CurrentPhase != "" {
+		t.Errorf("detail before Start should be ignored, got %q", got.CurrentPhase)
+	}
+
+	pt.Start("brew_scan")
+	if got := pt.Snapshot(); got.CurrentPhase != "brew_scan" {
+		t.Errorf("no detail yet: current_phase = %q, want %q", got.CurrentPhase, "brew_scan")
+	}
+
+	pt.UpdateDetail("fetching formulae")
+	if got := pt.Snapshot(); got.CurrentPhase != "brew_scan (fetching formulae)" {
+		t.Errorf("with detail: current_phase = %q, want %q",
+			got.CurrentPhase, "brew_scan (fetching formulae)")
+	}
+
+	pt.UpdateDetail("fetching casks")
+	if got := pt.Snapshot(); got.CurrentPhase != "brew_scan (fetching casks)" {
+		t.Errorf("detail should overwrite, got %q", got.CurrentPhase)
+	}
+}
+
+func TestPhaseTracker_StartClearsPreviousDetail(t *testing.T) {
+	pt := NewPhaseTracker()
+
+	pt.Start("a")
+	pt.UpdateDetail("a-detail")
+	pt.Start("b") // implicit finish of a; detail must reset
+	if got := pt.Snapshot(); got.CurrentPhase != "b" {
+		t.Errorf("detail should reset on next phase, got current_phase = %q", got.CurrentPhase)
+	}
+}
+
+func TestPhaseTracker_FinishClearsDetail(t *testing.T) {
+	pt := NewPhaseTracker()
+
+	pt.Start("a")
+	pt.UpdateDetail("in-flight")
+	pt.Finish()
+	if got := pt.Snapshot(); got.CurrentPhase != "" {
+		t.Errorf("detail should clear on Finish, got current_phase = %q", got.CurrentPhase)
+	}
+}
+
+// Completed phases keep their base name only — detail is per-tick state,
+// not a permanent label baked into history.
+func TestPhaseTracker_CompletedPhasesKeepBaseName(t *testing.T) {
+	pt := NewPhaseTracker()
+
+	pt.Start("node_scan")
+	pt.UpdateDetail("project 5 of 10")
+	pt.Finish()
+
+	snap := pt.Snapshot()
+	if len(snap.PhasesCompleted) != 1 {
+		t.Fatalf("phases_completed = %d, want 1", len(snap.PhasesCompleted))
+	}
+	if snap.PhasesCompleted[0].Name != "node_scan" {
+		t.Errorf("completed name = %q, want bare %q without detail",
+			snap.PhasesCompleted[0].Name, "node_scan")
+	}
+}
+
 func TestPhaseTracker_ConcurrentReadDuringWrite(t *testing.T) {
 	// Race detector must report clean. Spawn a writer that flips phases and
 	// a reader (mimicking the heartbeat goroutine) that snapshots repeatedly.

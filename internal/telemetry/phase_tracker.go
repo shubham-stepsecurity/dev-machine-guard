@@ -17,6 +17,11 @@ type PhaseCompletion struct {
 // boundary and on every heartbeat tick. The same struct is embedded on the
 // final telemetry Payload so a stored telemetry record is self-describing
 // without joining to the run-status table.
+//
+// In-flight sub-progress (set via PhaseTracker.UpdateDetail) is folded into
+// CurrentPhase as "<phase> (<detail>)" rather than carried in a separate
+// field, so older backends that don't know about phase-detail still surface
+// the string verbatim. Completed phases keep their base name only.
 type RunStatusInfo struct {
 	PhasesCompleted []PhaseCompletion `json:"phases_completed,omitempty"`
 	CurrentPhase    string            `json:"current_phase,omitempty"`
@@ -28,12 +33,13 @@ type RunStatusInfo struct {
 // concurrently — Snapshot returns a defensive copy so the caller never
 // observes a torn slice while a phase is appended.
 type PhaseTracker struct {
-	mu             sync.Mutex
-	startedAt      time.Time
-	phaseStartedAt time.Time
-	currentPhase   string
-	completed      []PhaseCompletion
-	now            func() time.Time // overridable for tests
+	mu                 sync.Mutex
+	startedAt          time.Time
+	phaseStartedAt     time.Time
+	currentPhase       string
+	currentPhaseDetail string
+	completed          []PhaseCompletion
+	now                func() time.Time // overridable for tests
 }
 
 // NewPhaseTracker constructs a tracker anchored at the current time.
@@ -51,7 +57,8 @@ func newPhaseTrackerWithClock(now func() time.Time) *PhaseTracker {
 // Start records the beginning of a new phase. Calling Start while another
 // phase is already in flight implicitly finishes the previous one — this
 // keeps call sites tidy when phases run back-to-back without a Finish in
-// between.
+// between. Detail from the previous phase is cleared so it never leaks
+// into the new one.
 func (t *PhaseTracker) Start(phase string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -60,6 +67,7 @@ func (t *PhaseTracker) Start(phase string) {
 		t.finishLocked()
 	}
 	t.currentPhase = phase
+	t.currentPhaseDetail = ""
 	t.phaseStartedAt = t.now()
 }
 
@@ -82,17 +90,42 @@ func (t *PhaseTracker) finishLocked() {
 		DurationMs: finishedAt.Sub(t.phaseStartedAt).Milliseconds(),
 	})
 	t.currentPhase = ""
+	t.currentPhaseDetail = ""
+}
+
+// UpdateDetail sets a free-form sub-progress string for the current
+// phase ("project 12 of 47", "scanning pip3", ...). No-op when no phase
+// is in flight — keeps call sites tidy when a scanner reports progress
+// from inside a goroutine that may outlive its enclosing Start/Finish.
+func (t *PhaseTracker) UpdateDetail(detail string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.currentPhase == "" {
+		return
+	}
+	t.currentPhaseDetail = detail
 }
 
 // Snapshot returns a copy of the tracker state safe for marshalling on
 // another goroutine. The returned slice is independent of the tracker's
 // internal buffer.
+//
+// When the in-flight phase has a detail set, it's folded into CurrentPhase
+// as "<phase> (<detail>)" so the wire format stays flat — older backends
+// without a dedicated detail field still render the progress verbatim.
+// PhasesCompleted entries keep their base name; detail is per-tick state,
+// not a permanent label.
 func (t *PhaseTracker) Snapshot() RunStatusInfo {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	current := t.currentPhase
+	if current != "" && t.currentPhaseDetail != "" {
+		current = current + " (" + t.currentPhaseDetail + ")"
+	}
+
 	out := RunStatusInfo{
-		CurrentPhase: t.currentPhase,
+		CurrentPhase: current,
 		ElapsedMs:    t.now().Sub(t.startedAt).Milliseconds(),
 	}
 	if len(t.completed) > 0 {
