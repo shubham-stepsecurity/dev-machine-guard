@@ -21,7 +21,7 @@
 !images/**/*.html
 
 # Go build artifacts — never commit compiled binaries
-**/stepsecurity-dev-machine-guard
+# **/stepsecurity-dev-machine-guard
 *.exe
 dist/
 stepsecurity-dev-machine-guard-linux
