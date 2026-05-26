@@ -78,14 +78,19 @@ func Home() string {
 	if cliDisabled {
 		return ""
 	}
+	// Read the env var once so a concurrent mutation (test helpers,
+	// future goroutine setup) can't flip the value between the switch
+	// guard and the assignment below — and so we don't pay for a second
+	// syscall on every lookup.
+	envHome := os.Getenv(HomeEnvVar)
 	var raw string
 	switch {
 	case cliOverride != "":
 		raw = cliOverride
 	case config.InstallDir != "":
 		raw = config.InstallDir
-	case os.Getenv(HomeEnvVar) != "":
-		raw = os.Getenv(HomeEnvVar)
+	case envHome != "":
+		raw = envHome
 	default:
 		return LegacyHome()
 	}

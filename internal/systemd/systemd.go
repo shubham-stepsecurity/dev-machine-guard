@@ -220,16 +220,25 @@ func systemdEscape(path string) string {
 // systemdEnvEscape escapes a value for inclusion inside a double-quoted
 // Environment="VAR=value" assignment. systemd treats the quoted span
 // as a single token but still honours backslash escaping inside it —
-// any literal " or \ in the value must be escaped or the unit file
-// silently parses to garbage (systemd-analyze verify catches it; a
-// daemon-reload of a broken unit does not). Per systemd.exec(5) the
-// shell-style escapes are \", \\, \n, \r, \t. Filesystem paths contain
-// none of these on the happy path, but operators with creative path
-// choices (or attackers who can write to config.json) shouldn't be
-// able to break the unit file.
+// any literal control character or quote in the value must be escaped
+// or the unit file silently parses to garbage (systemd-analyze verify
+// catches it; a daemon-reload of a broken unit does not). Per
+// systemd.exec(5) the shell-style escapes inside the quoted form are
+// \", \\, \n, \r, \t — a raw newline in particular would terminate
+// the directive and let any trailing content land as a new top-level
+// unit-file line. Filesystem paths contain none of these on the happy
+// path, but config.json values are operator-editable (and an attacker
+// with write access there shouldn't be able to inject a new directive
+// into the generated unit).
+//
+// Order matters: replace `\` first so the backslashes we introduce for
+// the other escapes don't get double-escaped.
 func systemdEnvEscape(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)
 	value = strings.ReplaceAll(value, `"`, `\"`)
+	value = strings.ReplaceAll(value, "\n", `\n`)
+	value = strings.ReplaceAll(value, "\r", `\r`)
+	value = strings.ReplaceAll(value, "\t", `\t`)
 	return value
 }
 

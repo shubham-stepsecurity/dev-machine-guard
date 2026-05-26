@@ -108,7 +108,9 @@ func main() {
 	// An explicit `--install-dir=` (empty) routes through SetDisabled,
 	// after which paths.Home() returns "" so EVERY on-disk consumer
 	// (filelog, ai-agent hook errors, any future file) uniformly skips
-	// — not just file logging.
+	// — not just file logging. cli.Parse rejects the empty form when
+	// paired with `install` / `uninstall`, where the platform installers
+	// need a real on-disk path for unit files and the log directory.
 	//
 	// The capture is installed before the logger so every subsequent
 	// stderr write — including the pipe-tee in
