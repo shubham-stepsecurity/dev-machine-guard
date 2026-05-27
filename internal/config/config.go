@@ -19,7 +19,7 @@ var (
 	EnableNPMScan       *bool  // nil=auto
 	EnableBrewScan      *bool  // nil=auto
 	EnablePythonScan    *bool  // nil=auto
-	IncludeTCCProtected *bool  // nil=auto (skip when running under macOS launchd, scan otherwise)
+	IncludeTCCProtected *bool  // nil or false = skip macOS TCC-protected dirs (default); true = scan them. Requires the agent to have Full Disk Access (PPPC or manual grant) for true to actually return results. See docs/macos-tcc-permissions.md.
 	ColorMode           string // "" means auto
 	OutputFormat        string // "" means default (pretty)
 	HTMLOutputFile      string // "" means not set
