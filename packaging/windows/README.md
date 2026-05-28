@@ -115,6 +115,16 @@ SCCM auto-derives the detection rule from the MSI's `ProductCode`. No
 custom script needed. The `UpgradeCode` is stable across versions; the
 `ProductCode` rotates per build (WiX generates it automatically).
 
+For Intune Win32 deployments, ProductCode-based detection breaks under
+supersedence because each rebuild's regenerated ProductCode does not
+match the previous app entry. The MSI writes a stable
+`HKLM\Software\StepSecurity\AgentVersion` registry value
+(component `VersionRegistry`) set to the MSI's `ProductVersion` on
+every install. Intune detection rules read that value with
+`String Equals <version>`; the rule survives ProductCode regen and
+distinguishes versions across supersedence. See
+[`docs/deploying-via-intune.md`](../../docs/deploying-via-intune.md#page-4-detection-rules).
+
 ## GUIDs
 
 The `UpgradeCode`s in `Product.wxs` are **load-bearing constants** —
