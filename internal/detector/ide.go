@@ -83,7 +83,7 @@ var ideDefinitions = []ideSpec{
 		// The .cmd shim follows the macOS rename; package.json fast-path resolves the
 		// version regardless, so the shim is only a fallback. (Verified from Google's
 		// docs/forums, not a live Windows box.)
-		WinPaths: []string{`%LOCALAPPDATA%\Programs\Antigravity IDE`, `%PROGRAMFILES%\Google\Antigravity`, `%LOCALAPPDATA%\Programs\Antigravity`},
+		WinPaths:  []string{`%LOCALAPPDATA%\Programs\Antigravity IDE`, `%PROGRAMFILES%\Google\Antigravity`, `%LOCALAPPDATA%\Programs\Antigravity`},
 		WinBinary: `resources\app\bin\antigravity-ide.cmd`,
 		// Linux: tarball/helper installs land under /opt/antigravity-ide or
 		// ~/Applications/antigravity-ide; the CLI is on PATH as "antigravity-ide"

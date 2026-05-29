@@ -38,3 +38,39 @@ func TestExecutionDeadlineFromEnv(t *testing.T) {
 		})
 	}
 }
+
+// ExecutionDeadline adds a config-file fallback for scheduler-fired runs that
+// never see the loader-exported env var: env > config > default.
+func TestExecutionDeadline_EnvThenConfigThenDefault(t *testing.T) {
+	cases := []struct {
+		name      string
+		env       string
+		setEnv    bool
+		configVal string
+		want      time.Duration
+	}{
+		// Env present and valid always wins over config.
+		{"env wins over config", "2h", true, "8h", 2 * time.Hour},
+		{"env off disables despite config", "off", true, "8h", 0},
+		// Env absent/unparseable falls through to the config value.
+		{"config used when env unset", "", false, "8h", 8 * time.Hour},
+		{"config used when env empty", "", true, "8h", 8 * time.Hour},
+		{"config off disables when env unset", "", false, "off", 0},
+		{"env junk falls through to config", "junk", true, "30m", 30 * time.Minute},
+		// Neither source usable → built-in default.
+		{"config junk falls back to default", "", false, "junk", 4 * time.Hour},
+		{"both empty falls back to default", "", false, "", 4 * time.Hour},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.setEnv {
+				t.Setenv("STEPSEC_MAX_EXECUTION_DURATION", tc.env)
+			}
+			got := ExecutionDeadline(tc.configVal)
+			if got != tc.want {
+				t.Errorf("ExecutionDeadline(%q) env=%q set=%v = %v, want %v",
+					tc.configVal, tc.env, tc.setEnv, got, tc.want)
+			}
+		})
+	}
+}

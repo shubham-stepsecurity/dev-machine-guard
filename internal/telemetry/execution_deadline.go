@@ -16,26 +16,60 @@ import (
 // bounding pathological cases to a single daily launchd/schtasks tick.
 const defaultExecutionDeadline = 4 * time.Hour
 
-// ExecutionDeadlineFromEnv resolves STEPSEC_MAX_EXECUTION_DURATION using
-// the same contract as scanDeadlineFromEnv (scan_deadline.go):
-//   - unset / empty: returns defaultExecutionDeadline (4h)
-//   - "0" / "off": returns 0 (watchdog disabled; main.go skips arming)
-//   - any Go time.ParseDuration string ("2h", "30m", "45m30s"): that
-//     duration when positive
-//   - anything else: returns defaultExecutionDeadline (silent fallback —
-//     telemetry runs from unattended launchd/schtasks/systemd contexts
-//     where a typo in the env var should not be fatal to the scan)
+// EnvMaxExecutionDuration is an optional environment-variable override for the
+// execution watchdog, honored ahead of config.json for ad-hoc/manual runs
+// (e.g. `STEPSEC_MAX_EXECUTION_DURATION=3s ./binary send-telemetry`). The
+// loader no longer exports it: the configured value is delivered through
+// config.json (config.MaxExecutionDuration), which the binary reads on every
+// invocation — including scheduler-fired runs (launchd/systemd/schtasks) that
+// bypass the loader.
+const EnvMaxExecutionDuration = "STEPSEC_MAX_EXECUTION_DURATION"
+
+// ExecutionDeadlineFromEnv resolves the execution deadline from the environment
+// only. Equivalent to ExecutionDeadline(""); kept for callers (and tests) that
+// have no config fallback to supply.
 func ExecutionDeadlineFromEnv() time.Duration {
-	v := os.Getenv("STEPSEC_MAX_EXECUTION_DURATION")
+	return ExecutionDeadline("")
+}
+
+// ExecutionDeadline resolves the whole-process execution deadline with
+// env > config > default precedence. The env var (EnvMaxExecutionDuration) is
+// an optional ad-hoc override; configValue is the value the loader/installer
+// persists into config.json (config.MaxExecutionDuration), the primary channel
+// — it covers every invocation, including scheduler-fired runs
+// (launchd/systemd/schtasks) that invoke the binary directly. Each source uses
+// the same contract as scanDeadlineFromEnv (scan_deadline.go):
+//   - "0" / "off": 0 (watchdog disabled; main.go skips arming)
+//   - any positive Go time.ParseDuration string ("2h", "30m", "45m30s"): that
+//     duration
+//   - empty or unparseable: fall through to the next source, then to
+//     defaultExecutionDeadline (a typo in an unattended launchd/schtasks/systemd
+//     context must not be fatal to the scan)
+func ExecutionDeadline(configValue string) time.Duration {
+	if d, ok := parseExecutionDeadline(os.Getenv(EnvMaxExecutionDuration)); ok {
+		return d
+	}
+	if d, ok := parseExecutionDeadline(configValue); ok {
+		return d
+	}
+	return defaultExecutionDeadline
+}
+
+// parseExecutionDeadline applies the shared parse contract to a single raw
+// value. ok is false when the value is absent or unparseable — signalling the
+// caller to fall through to the next source; true (with a possibly-zero
+// duration) when the value explicitly resolved, including the "0"/"off" disable
+// case.
+func parseExecutionDeadline(v string) (time.Duration, bool) {
 	if v == "" {
-		return defaultExecutionDeadline
+		return 0, false
 	}
 	if v == "0" || v == "off" {
-		return 0
+		return 0, true
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil || d <= 0 {
-		return defaultExecutionDeadline
+		return 0, false
 	}
-	return d
+	return d, true
 }
