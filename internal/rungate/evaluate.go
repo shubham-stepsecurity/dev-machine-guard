@@ -3,7 +3,6 @@ package rungate
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/step-security/dev-machine-guard/internal/config"
@@ -36,8 +35,8 @@ type Result struct {
 // lock.Acquire so it reports the contention as before.
 func Evaluate(ctx context.Context, exec executor.Executor, log *progress.Logger, forceScan bool) Result {
 	in := Inputs{
-		ForceScan:  forceScan || os.Getenv("STEPSEC_FORCE_SCAN") == "1",
-		KillSwitch: os.Getenv("STEPSEC_DISABLE_RUN_GATE") == "1",
+		ForceScan:  forceScan || exec.Getenv("STEPSEC_FORCE_SCAN") == "1",
+		KillSwitch: exec.Getenv("STEPSEC_DISABLE_RUN_GATE") == "1",
 		Now:        time.Now(),
 	}
 
@@ -47,7 +46,7 @@ func Evaluate(ctx context.Context, exec executor.Executor, log *progress.Logger,
 	// entirely from the backend.
 	if in.ForceScan || in.KillSwitch {
 		if in.ForceScan {
-			log.Progress("Run gate: bypassed (--force-scan)")
+			log.Debug("run-gate: bypassed (--force-scan)")
 		}
 		return Result{Skip: false, Reason: Decide(in).Reason}
 	}

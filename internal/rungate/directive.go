@@ -1,6 +1,7 @@
 // Package rungate implements the server-driven run gate: on every invocation
-// the agent asks the backend's run-directive endpoint whether a full scan is
-// due and exits quietly when it isn't. The scan cadence lives in the backend
+// the agent asks the backend — via the scan_directive block of the run-config
+// response — whether a full scan is due and exits quietly when it isn't. The
+// scan cadence lives in the backend
 // (per tenant, with temporary overrides and per-device refresh), so customers
 // point their MDM/scheduler at a simple hourly launch and control the real
 // frequency from the dashboard.
@@ -12,9 +13,9 @@
 // fallback, and the quiet back-off while another instance holds the lock.
 package rungate
 
-// Wire contract for GET /developer-mdm-agent/run-directive. Mode and reason
-// strings are wire-permanent and mirrored by the backend's
-// run_directive_handler.go.
+// Wire contract for the scan_directive block of GET
+// /developer-mdm-agent/run-config. Mode and reason strings are wire-permanent
+// and mirrored by the backend's scan_directive.go.
 const (
 	ModeFull = "full"
 	ModeSkip = "skip"

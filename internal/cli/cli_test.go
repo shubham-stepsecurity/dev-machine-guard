@@ -85,6 +85,16 @@ func TestParse_OverrideGate(t *testing.T) {
 	}
 }
 
+func TestParse_ForceScan(t *testing.T) {
+	cfg, err := Parse([]string{"--force-scan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ForceScan {
+		t.Error("expected ForceScan=true on top-level parse")
+	}
+}
+
 func TestParse_Color(t *testing.T) {
 	for _, mode := range []string{"auto", "always", "never"} {
 		cfg, err := Parse([]string{"--color=" + mode})
