@@ -104,6 +104,14 @@ type ConfigFile struct {
 	RetireOnUninstall     *bool    `json:"retire_on_uninstall,omitempty"`
 }
 
+// MachineInstallDir returns the machine-wide install directory an elevated
+// Windows install uses (C:\ProgramData\StepSecurity), or "" on other
+// platforms. Exported for callers that must find per-user state written by
+// scheduled runs when they themselves run as SYSTEM (uninstall --retire).
+func MachineInstallDir() string {
+	return machineConfigDir()
+}
+
 // userConfigDir returns ~/.stepsecurity — the per-user config location.
 // Used by community installs and by enterprise installs done via a
 // developer's own login (not via MSI/SCCM).

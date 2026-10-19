@@ -26,6 +26,7 @@ import (
 
 	"github.com/step-security/dev-machine-guard/internal/aiagents/redact"
 	"github.com/step-security/dev-machine-guard/internal/buildinfo"
+	"github.com/step-security/dev-machine-guard/internal/config"
 	"github.com/step-security/dev-machine-guard/internal/device"
 	"github.com/step-security/dev-machine-guard/internal/executor"
 	"github.com/step-security/dev-machine-guard/internal/heartbeat"
@@ -165,24 +166,12 @@ func CollectIdentities(ctx context.Context, exec executor.Executor, log *progres
 		log.Debug("retire: identity template %q is incomplete in this context; relying on cached per-user ids", id.Template)
 	}
 
-	home := paths.Home()
-	if home == "" {
-		return capIDs(ids)
-	}
-	var files []string
-	if top := filepath.Join(home, heartbeat.Filename); fileExists(top) {
-		files = append(files, top)
-	}
-	if matches, err := filepath.Glob(filepath.Join(home, "users", "*", heartbeat.Filename)); err == nil {
-		sort.Strings(matches)
-		files = append(files, matches...)
-	}
-	for _, f := range files {
-		rec, err := heartbeat.Load(f)
-		if err != nil || rec == nil || rec.RunGate == nil {
-			continue
-		}
-		add(rec.RunGate.DeviceID)
+	// The install dir this process resolves is not always where the scheduled
+	// runs kept their state: an MSI uninstall custom action runs as SYSTEM,
+	// whose own home is the systemprofile folder, while the elevated install
+	// writes everything under C:\ProgramData\StepSecurity. Search both.
+	for _, id := range collectCachedIDs(stateRoots()) {
+		add(id)
 	}
 	return capIDs(ids)
 }
@@ -197,4 +186,46 @@ func capIDs(ids []string) []string {
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
+}
+
+// stateRoots lists the directories whose last-run.json files may name this
+// install's devices: the resolved install dir and, on Windows, the
+// machine-wide one. Deduplicated, empty entries dropped.
+func stateRoots() []string {
+	var roots []string
+	seen := map[string]bool{}
+	for _, r := range []string{paths.Home(), config.MachineInstallDir()} {
+		r = strings.TrimSpace(r)
+		if r == "" || seen[r] {
+			continue
+		}
+		seen[r] = true
+		roots = append(roots, r)
+	}
+	return roots
+}
+
+// collectCachedIDs reads the run-gate cache of every state file under the
+// roots: last-run.json at the top level and users/*/last-run.json for
+// per-user identities. Order is deterministic (roots in order, users sorted).
+func collectCachedIDs(roots []string) []string {
+	var ids []string
+	for _, root := range roots {
+		var files []string
+		if top := filepath.Join(root, heartbeat.Filename); fileExists(top) {
+			files = append(files, top)
+		}
+		if matches, err := filepath.Glob(filepath.Join(root, "users", "*", heartbeat.Filename)); err == nil {
+			sort.Strings(matches)
+			files = append(files, matches...)
+		}
+		for _, f := range files {
+			rec, err := heartbeat.Load(f)
+			if err != nil || rec == nil || rec.RunGate == nil {
+				continue
+			}
+			ids = append(ids, rec.RunGate.DeviceID)
+		}
+	}
+	return ids
 }

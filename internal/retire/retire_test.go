@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -188,5 +189,31 @@ func TestCollectIdentities_DefaultSerialWithNoState(t *testing.T) {
 	ids := CollectIdentities(context.Background(), mock, progress.NewNoop())
 	if len(ids) != 1 || ids[0] != "LNX-1" {
 		t.Fatalf("ids = %v", ids)
+	}
+}
+
+func TestCollectCachedIDs_SearchesEveryRoot(t *testing.T) {
+	// An MSI uninstall runs as SYSTEM: its own home has no state, the
+	// machine-wide dir holds the per-user caches. Both roots are searched and
+	// the order is stable.
+	empty := t.TempDir()
+	machine := t.TempDir()
+	for _, u := range []string{"dev2", "dev1"} {
+		dir := filepath.Join(machine, "users", u)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, heartbeat.Filename),
+			[]byte(`{"schema_version":1,"run_gate":{"device_id":"host-`+u+`"}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := collectCachedIDs([]string{empty, machine})
+	want := []string{"host-dev1", "host-dev2"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("collectCachedIDs = %v, want %v", got, want)
+	}
+	if got := collectCachedIDs([]string{""}); len(got) != 0 {
+		t.Fatalf("empty root must yield nothing, got %v", got)
 	}
 }
