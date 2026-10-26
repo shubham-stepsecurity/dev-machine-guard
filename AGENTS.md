@@ -651,7 +651,8 @@ if isConfigured(ctx, exec) {
   `device.IsServiceAccount` is the single no-user predicate.
 - **Uninstall retires first.** `uninstall` calls `internal/retire` (best-effort, bounded) BEFORE the
   scheduler teardown when `--retire` or config `retire_on_uninstall` says so; `--no-retire`
-  (passed by the MSI on a major upgrade) suppresses it. A failure is a warning, never an exit code.
+  suppresses it (the MSI skips the uninstall CA entirely on a major upgrade, so an upgrade never
+  retires). A failure is a warning, never an exit code.
 - **Config: build-time values win.** Enterprise config globals start as `"{{PLACEHOLDER}}"` strings the
   installer substitutes; `config.Load()` applies a `config.json` field **only if the in-memory value is
   still a placeholder/empty**. `Load` tolerates a missing/garbage file (returns, leaving defaults).
