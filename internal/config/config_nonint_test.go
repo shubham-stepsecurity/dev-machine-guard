@@ -281,7 +281,7 @@ func TestShowConfigure_PrintsDeviceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = captureStdout(t, func() { ShowConfigure("") })
-	if !strings.Contains(out, "machine serial (default)") {
+	if !strings.Contains(out, "auto (per-user on multi-session hosts, hardware serial elsewhere)") {
 		t.Errorf("default identity label missing:\n%s", out)
 	}
 }

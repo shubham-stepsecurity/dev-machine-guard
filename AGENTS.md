@@ -634,10 +634,18 @@ if isConfigured(ctx, exec) {
   the MACHINE identity once per process (hardware serial, else the machine-wide id file root wrote,
   else a generated and persisted id; placeholder serials rejected by `usableSerial`), and
   `device.ResolveIdentity` (identity.go) layers the configured identity on top:
-  `STEPSEC_DEVICE_ID` > `config.DeviceID` (config.json `device_id`) > machine identity; a literal or
+  `STEPSEC_DEVICE_ID` > `config.DeviceID` (config.json `device_id`) > automatic per-user template on
+  a shared Windows host (multiuser.go: sticky marker, multi-session edition or 2+ scanning users;
+  the switch retires the old serial row once, reason `identity_changed`) > machine identity; a literal or
   a template over `{serial}` `{hostname}` `{user}`; template expansions are sanitized (a literal id is used as given)
   (`device.SanitizeDeviceID`), the machine-identity path is byte-identical. `Gather` stores the
   result on `Device.DeviceID`/`DeviceIDSource`; `Device.SerialNumber` stays the machine identity.
+- **Virtualization is one call: `device.DetectVirtualization`** (virt.go; memoized per process on
+  its own context). Evidence order: cloud metadata service (probed only when SMBIOS/DMI already
+  names that cloud's hypervisor family), SMBIOS/DMI vendor strings, macOS `kern.hv_vmm_present`,
+  `systemd-detect-virt --vm`, cpuinfo `hypervisor`. Never the CPUID hypervisor bit on Windows
+  (Hyper-V/VBS hosts set it). Reported as `Device.Virtualization` (type virtual|physical|unknown,
+  vendor, source); "physical" means no hypervisor was detected, never a proof.
   Never read the serial as the id anywhere else. An `IdentityIncomplete` identity ({user} under a
   service account) skips the run — no beacon, no upload, no phantom row.
   `device.IsServiceAccount` is the single no-user predicate.

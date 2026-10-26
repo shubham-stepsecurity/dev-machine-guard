@@ -26,6 +26,7 @@ const (
 	IdentitySourceEnv    = "env"
 	IdentitySourceConfig = "config"
 	IdentitySourceSerial = "serial"
+	// IdentitySourceAuto is declared in multiuser.go.
 )
 
 // Identity template tokens. The template is a literal, or any mix of literal
@@ -72,19 +73,31 @@ type Identity struct {
 	// Issue is a human-readable note for the log ("" when nothing is wrong):
 	// an unknown token, a template that sanitized to nothing, and so on.
 	Issue string
+	// AutoReason says why the automatic per-user identity applies ("" unless
+	// Source is IdentitySourceAuto): "multi-session edition" or "2+ users seen".
+	AutoReason string
 }
 
-// IdentityTemplate returns the configured identity template: STEPSEC_DEVICE_ID
-// when set, else config.json's device_id, else "" (machine identity). The
+// IdentityTemplate returns the identity template in force: STEPSEC_DEVICE_ID
+// when set, else config.json's device_id, else the automatic per-user
+// template on a shared host (multiuser.go), else "" (machine identity). The
 // source is returned alongside so callers can report it.
 func IdentityTemplate(exec executor.Executor) (template, source string) {
+	template, source, _ = identityTemplate(exec)
+	return template, source
+}
+
+func identityTemplate(exec executor.Executor) (template, source, autoReason string) {
 	if v := strings.TrimSpace(exec.Getenv(EnvDeviceID)); v != "" {
-		return v, IdentitySourceEnv
+		return v, IdentitySourceEnv, ""
 	}
 	if v := strings.TrimSpace(config.DeviceID); v != "" {
-		return v, IdentitySourceConfig
+		return v, IdentitySourceConfig, ""
 	}
-	return "", IdentitySourceSerial
+	if t, reason := autoIdentity(exec); t != "" {
+		return t, IdentitySourceAuto, reason
+	}
+	return "", IdentitySourceSerial, ""
 }
 
 // HasIdentityTemplate reports whether the device identity is configured rather
@@ -102,8 +115,12 @@ func HasIdentityTemplate(exec executor.Executor) bool {
 // no sanitization is applied when there is no template, so an existing fleet
 // never re-registers after an upgrade (VMware serials with spaces included).
 func ResolveIdentity(exec executor.Executor, serial, hostname, user string) Identity {
-	template, source := IdentityTemplate(exec)
-	return resolveWith(template, source, serial, hostname, user, exec.GOOS(), exec.IsRoot())
+	template, source, autoReason := identityTemplate(exec)
+	id := resolveWith(template, source, serial, hostname, user, exec.GOOS(), exec.IsRoot())
+	if id.Source == IdentitySourceAuto {
+		id.AutoReason = autoReason
+	}
+	return id
 }
 
 // AttachIdentity resolves the identity for a gathered Device and records it on

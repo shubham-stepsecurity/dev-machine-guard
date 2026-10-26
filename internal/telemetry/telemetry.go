@@ -67,7 +67,8 @@ type Payload struct {
 	CustomerID           string                 `json:"customer_id"`
 	DeviceID             string                 `json:"device_id"`
 	SerialNumber         string                 `json:"serial_number"`
-	DeviceIDSource       string                 `json:"device_id_source,omitempty"` // env | config | serial | wsl_guest
+	DeviceIDSource       string                 `json:"device_id_source,omitempty"` // env | config | auto | serial | wsl_guest
+	Virtualization       *model.Virtualization  `json:"virtualization,omitempty"`
 	UserIdentity         string                 `json:"user_identity"`
 	Hostname             string                 `json:"hostname"`
 	Platform             string                 `json:"platform"`
@@ -527,6 +528,9 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 			return fmt.Errorf("device identity could not be determined")
 		}
 	}
+	// A host that just became multi-user retires the row it used to report
+	// under (once), before anything is posted under the new identity.
+	retireSerialRowOnIdentitySwitch(ctx, exec, log, &dev, wslGuest)
 	// Single source of truth for "is this a real developer or a daemon
 	// context?" — same predicate the identity template uses, so the warning,
 	// the Developer: line, the telemetry field and the {user} token agree.
@@ -538,6 +542,9 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 	}
 	log.Progress("Serial Number: %s", dev.SerialNumber)
 	log.Progress("OS Version: %s", dev.OSVersion)
+	if v := device.FormatVirtualization(dev.Virtualization); v != "" {
+		log.Progress("Virtualization: %s", v)
+	}
 	if noUserLoggedIn {
 		log.Progress("Developer: (no user logged in)")
 	} else {
@@ -1295,6 +1302,7 @@ func Run(exec executor.Executor, log *progress.Logger, cfg *cli.Config) (err err
 		Platform:             dev.Platform,
 		OSVersion:            dev.OSVersion,
 		Resources:            dev.Resources,
+		Virtualization:       dev.Virtualization,
 		WSL:                  dev.WSL,
 		WSLGuest:             wslGuest,
 		AgentVersion:         buildinfo.Version,

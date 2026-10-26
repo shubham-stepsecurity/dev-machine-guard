@@ -712,7 +712,7 @@ func displayRetireOnUninstall(v *bool) string {
 
 func displayDeviceID(v string) string {
 	if v = strings.TrimSpace(v); v == "" {
-		return "machine serial (default)"
+		return "auto (per-user on multi-session hosts, hardware serial elsewhere)"
 	}
 	return v
 }

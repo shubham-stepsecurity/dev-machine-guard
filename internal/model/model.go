@@ -79,6 +79,31 @@ type Device struct {
 	// is on — so `omitempty` drops it entirely rather than emitting a zero
 	// value that a reader could mistake for "scanned, no WSL".
 	WSL *WSLInfo `json:"wsl,omitempty"`
+	// Virtualization says whether this machine is a virtual machine and on
+	// which hypervisor or cloud. Nil when detection did not run (community
+	// output before the probe, a Device built by hand).
+	Virtualization *Virtualization `json:"virtualization,omitempty"`
+}
+
+// Virtualization types. A machine can be proven virtual (a hypervisor vendor
+// showed up in SMBIOS/DMI, the cloud metadata service answered, or the OS
+// says so), never proven physical: "physical" means no hypervisor was
+// detected by any source, "unknown" means no source could be read.
+const (
+	VirtualizationVirtual  = "virtual"
+	VirtualizationPhysical = "physical"
+	VirtualizationUnknown  = "unknown"
+)
+
+// Virtualization is the hypervisor classification reported with device info.
+// Vendor is one of azure | aws | gcp | hyperv | vmware | kvm | qemu | xen |
+// parallels | virtualbox | apple | other, empty for a physical machine.
+// Source names the evidence: imds (cloud metadata service) | smbios | dmi |
+// sysctl | cpuinfo | systemd.
+type Virtualization struct {
+	Type   string `json:"type"`
+	Vendor string `json:"vendor,omitempty"`
+	Source string `json:"source,omitempty"`
 }
 
 // WSL presence is tri-state. A probe that cannot read the registry (e.g. a

@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"encoding/json"
+	"github.com/step-security/dev-machine-guard/internal/model"
 	"strings"
 	"testing"
 
@@ -57,5 +58,20 @@ func TestNoUserLoggedIn_WindowsServiceAccount(t *testing.T) {
 		if got := device.IsServiceAccount(m, user); got != want {
 			t.Errorf("IsServiceAccount(%q) = %v, want %v", user, got, want)
 		}
+	}
+}
+
+func TestPayload_CarriesVirtualization(t *testing.T) {
+	v := &model.Virtualization{Type: model.VirtualizationVirtual, Vendor: "azure", Source: "imds"}
+	data, err := json.Marshal(&Payload{DeviceID: "d", Virtualization: v})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"virtualization":{"type":"virtual","vendor":"azure","source":"imds"}`) {
+		t.Errorf("virtualization missing from payload: %s", data)
+	}
+	bare, _ := json.Marshal(&Payload{DeviceID: "d"})
+	if strings.Contains(string(bare), "virtualization") {
+		t.Errorf("nil virtualization must be omitted: %s", bare)
 	}
 }

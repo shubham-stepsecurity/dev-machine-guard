@@ -34,10 +34,15 @@ import (
 	"github.com/step-security/dev-machine-guard/internal/progress"
 )
 
-// Reason is the retired_reason the backend records for an agent-initiated
-// retire. Fixed on the wire; the management API and the inactivity sweep use
-// their own values.
-const Reason = "agent_uninstall"
+// Reasons the agent sends as retired_reason. The management API and the
+// inactivity sweep use their own values.
+const (
+	// ReasonUninstall: `uninstall --retire` / retire_on_uninstall.
+	ReasonUninstall = "agent_uninstall"
+	// ReasonIdentityChanged: a host switched to the automatic per-user identity
+	// and its previous machine-identity row is being retired.
+	ReasonIdentityChanged = "identity_changed"
+)
 
 const (
 	// attemptTimeout bounds one HTTP attempt. Uninstall runs inside an MSI
@@ -60,11 +65,11 @@ var ErrNotSupported = errors.New("retire: endpoint not available on this backend
 
 // Post retires deviceID under customerID: POST
 // {endpoint}/v1/{customer}/developer-mdm-agent/devices/{device_id}/retire with
-// the telemetry key as Bearer. 2xx is success (including an unknown device —
+// the telemetry key as Bearer and the given reason (Reason*). 2xx is success (including an unknown device —
 // the backend answers 200 without creating a row). 5xx and transport errors
 // retry once; any other 4xx is terminal. Errors are redacted (the URL embeds
 // the customer id, the header the tenant key).
-func Post(ctx context.Context, endpoint, apiKey, customerID, deviceID, agentVersion, platform string) error {
+func Post(ctx context.Context, endpoint, apiKey, customerID, deviceID, agentVersion, platform, reason string) error {
 	endpoint = strings.TrimSpace(endpoint)
 	apiKey = strings.TrimSpace(apiKey)
 	customerID = strings.TrimSpace(customerID)
@@ -81,7 +86,7 @@ func Post(ctx context.Context, endpoint, apiKey, customerID, deviceID, agentVers
 	body, err := json.Marshal(map[string]string{
 		"agent_version": agentVersion,
 		"platform":      platform,
-		"reason":        Reason,
+		"reason":        reason,
 	})
 	if err != nil {
 		return fmt.Errorf("retire: encode body: %w", err)

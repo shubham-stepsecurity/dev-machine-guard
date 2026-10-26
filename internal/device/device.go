@@ -66,6 +66,7 @@ func Gather(ctx context.Context, exec executor.Executor) model.Device {
 		UserIdentity: userIdentity,
 		Resources:    gatherResources(ctx, exec),
 	}
+	dev.Virtualization = DetectVirtualization(ctx, exec)
 	AttachIdentity(exec, &dev)
 	return dev
 }

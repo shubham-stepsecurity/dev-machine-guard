@@ -5,12 +5,15 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/step-security/dev-machine-guard/internal/device"
 	"github.com/step-security/dev-machine-guard/internal/executor"
+	"github.com/step-security/dev-machine-guard/internal/model"
 	"github.com/step-security/dev-machine-guard/internal/progress"
 )
 
@@ -657,5 +660,22 @@ func TestApplyBatterySettings_WarnsOnUnpatchableXML(t *testing.T) {
 	})
 	if !strings.Contains(out, "[warning]") {
 		t.Errorf("expected Warn, got:\n%s", out)
+	}
+}
+
+func TestPerUserIdentity_AutoOnMultiSessionHost(t *testing.T) {
+	dir := t.TempDir()
+	t.Cleanup(device.SetMachineStateDirForTest(dir))
+	mock := executor.NewMock()
+	mock.SetGOOS(model.PlatformWindows)
+	mock.SetUsername(`HOST\jdoe`)
+	if perUserIdentity(mock) {
+		t.Fatal("no template and no shared-host evidence: not per-user")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "multi-user.json"), []byte(`{"since":1,"reason":"edition"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !perUserIdentity(mock) {
+		t.Fatal("a shared host must register the task with the parallel instance policy")
 	}
 }

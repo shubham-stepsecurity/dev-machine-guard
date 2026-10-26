@@ -167,6 +167,13 @@ func main() {
 	// run-gate cache, delta scan state, node cache and run metrics live under
 	// <install dir>/users/<user>. Set before the heartbeat below stamps
 	// last-run.json. Probes nothing (no serial), so it is free here.
+	// A scan first records who is running it in the machine-wide state: a
+	// second developer on the same host is what flips it to automatic
+	// per-user identities (device/multiuser.go), and that must be known
+	// before the scope below is chosen.
+	if cfg.Command == "send-telemetry" {
+		device.RecordScanUser(exec)
+	}
 	paths.SetUserScope(device.IdentityUserScope(exec))
 	installDir := paths.Home() // "" when SetDisabled or home unresolved
 	logFilePath := ""
@@ -768,8 +775,11 @@ func resolvedIdentityLine(exec executor.Executor) string {
 		return fmt.Sprintf("(incomplete: template %q needs a logged-in user; this context has none)", id.Template)
 	}
 	line := fmt.Sprintf("%s (source: %s)", id.DeviceID, id.Source)
-	if id.Source == device.IdentitySourceEnv {
+	switch id.Source {
+	case device.IdentitySourceEnv:
 		line += " via " + device.EnvDeviceID
+	case device.IdentitySourceAuto:
+		line = fmt.Sprintf("%s (source: auto, %s)", id.DeviceID, id.AutoReason)
 	}
 	if id.Issue != "" {
 		line += " — " + id.Issue
@@ -801,7 +811,7 @@ func retireDeviceOnUninstall(exec executor.Executor, log *progress.Logger, cfg *
 		return
 	}
 	for _, id := range ids {
-		err := retire.Post(ctx, config.APIEndpoint, config.APIKey, config.CustomerID, id, buildinfo.Version, runtime.GOOS)
+		err := retire.Post(ctx, config.APIEndpoint, config.APIKey, config.CustomerID, id, buildinfo.Version, runtime.GOOS, retire.ReasonUninstall)
 		switch {
 		case err == nil:
 			log.Progress("Retired device %s in the dashboard", id)
