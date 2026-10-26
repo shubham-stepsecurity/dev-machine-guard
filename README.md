@@ -58,7 +58,7 @@ The steps below install the binary directly and are intended for **community use
 
 ### Install from release (community)
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/step-security/dev-machine-guard/releases). Release asset filenames embed the version (for example, `stepsecurity-dev-machine-guard-1.17.0-darwin`), so the snippets below resolve the latest tag first rather than hardcoding a version.
+Download the latest binary for your platform from [GitHub Releases](https://github.com/step-security/dev-machine-guard/releases). Release asset filenames embed the version (for example, `stepsecurity-dev-machine-guard-1.18.0-darwin`), so the snippets below resolve the latest tag first rather than hardcoding a version.
 
 **macOS** (universal binary — Apple Silicon and Intel)
 
@@ -339,6 +339,8 @@ Configuration is read from `.npmrc` (npm), pnpm config, `bunfig.toml` (bun), `.y
 Composer auditing reads selected global `config.json`, root manifests and verified process overrides. It reports observed repository, proxy, TLS and plugin settings with credentials redacted. It does not infer the repository that supplied a package or execute Composer to reconstruct runtime configuration. See [PHP Packages](SCAN_COVERAGE.md#php-packages) for scope and limits.
 
 NuGet auditing reads project, ancestor, user and machine `NuGet.Config` files plus verified process overrides. It reports package sources, source mapping, fallback folders, proxy, TLS and audit settings with credentials redacted, and records which configuration applied to each project and restore. It never executes `dotnet` or `nuget` or reads credential-provider output. See [.NET Packages](SCAN_COVERAGE.md#net-packages) for scope and limits.
+
+Ruby auditing reads RubyGems `gemrc` files and Bundler global, project and process settings for the resolved developer. It reports package sources, mirrors, install and cache paths, proxy, TLS and checksum settings with credentials redacted, and records which configuration applied to each project. It never executes `ruby`, `gem` or `bundle`, and reads `~/.gem/credentials` for existence only. See [Ruby Packages](SCAN_COVERAGE.md#ruby-packages) for scope and limits.
 
 Enterprise Device Policy can also set StepSecurity Secure Registry as the sole user-level Python index for pip and uv. It manages only the resolved developer's user configuration and shared StepSecurity `.netrc` entry, keeps pip and uv results independent, and restores owned settings on an explicit policy clear. Project files, virtual environments, system configuration, environment variables, direct URLs, and Poetry are not modified.
 
