@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/step-security/dev-machine-guard/internal/buildinfo"
@@ -121,6 +122,7 @@ type Config struct {
 	// config.json retire_on_uninstall otherwise decides. Mutually exclusive.
 	UninstallRetire   bool
 	UninstallNoRetire bool
+	ConfigAutoUpdate  *bool // --auto-update=true|false (Windows self-update)
 
 	// IgnoreTelemetryError opts the `install` subcommand into treating an
 	// initial-telemetry POST failure as a warning rather than a fatal exit.
@@ -386,6 +388,12 @@ func Parse(args []string) (*Config, error) {
 			cfg.UninstallRetire = true
 		case arg == "--no-retire":
 			cfg.UninstallNoRetire = true
+		case strings.HasPrefix(arg, "--auto-update="):
+			v, err := strconv.ParseBool(strings.TrimPrefix(arg, "--auto-update="))
+			if err != nil {
+				return nil, fmt.Errorf("--auto-update must be true or false (also 1 or 0)")
+			}
+			cfg.ConfigAutoUpdate = &v
 		case arg == "--verbose":
 			cfg.Verbose = true
 		case arg == "--override-gate":
@@ -696,6 +704,7 @@ Non-interactive configure (for MSI / SCCM / Intune deployments):
                                 STEPSEC_DEVICE_ID env var overrides it at run time.
   --retire-on-uninstall[=BOOL]  Make 'uninstall' retire this device in the dashboard
                                 before removing the scheduler job (default false)
+  --auto-update=BOOL            Windows MSI self-update on (default) or off
   --ignore-telemetry-error      On 'install', treat a failed initial telemetry POST
                                 as a warning instead of a fatal exit (use in MSI
                                 custom actions to avoid rollback on transient network)

@@ -513,3 +513,16 @@ func TestParse_UninstallRetireFlags(t *testing.T) {
 		t.Errorf("--retire outside uninstall must be rejected, got %v", err)
 	}
 }
+
+func TestParse_ConfigureAutoUpdate(t *testing.T) {
+	cfg, err := Parse([]string{"configure", "--non-interactive", "--auto-update=false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ConfigAutoUpdate == nil || *cfg.ConfigAutoUpdate {
+		t.Fatalf("ConfigAutoUpdate = %v", cfg.ConfigAutoUpdate)
+	}
+	if _, err := Parse([]string{"configure", "--auto-update=maybe"}); err == nil {
+		t.Fatal("invalid --auto-update accepted")
+	}
+}

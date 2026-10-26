@@ -75,6 +75,10 @@ func main() {
 		os.Exit(aiagentscli.RunHook(os.Stdin, os.Stdout, os.Stderr, os.Args[2:]))
 	}
 
+	// agent.prestart fault checkpoint and the Windows self-update verbs
+	// (self-update --system, self-check); they exit here.
+	runEarlyVerbs(os.Args[1:])
+
 	// Load persisted config (~/.stepsecurity/config.json) before parsing CLI
 	// --config must be honoured before Load(), which runs ahead of flag
 	// parsing and keeps the first values it reads.
@@ -254,6 +258,7 @@ func main() {
 			ScanFrequency:     cfg.ConfigScanFrequency,
 			DeviceID:          cfg.ConfigDeviceID,
 			RetireOnUninstall: cfg.ConfigRetireOnUninstall,
+			AutoUpdate:        cfg.ConfigAutoUpdate,
 		}
 		if opts.APIKey == "" {
 			// Env-var fallback keeps the secret off the msiexec command
@@ -290,6 +295,7 @@ func main() {
 			log.Error("Enterprise configuration not found. Run '%s configure' or download the script from your StepSecurity dashboard.", os.Args[0])
 			os.Exit(1)
 		}
+		reportBootstrapFallback()
 		// Server-driven run gate: exit 0 quietly when the backend says this
 		// invocation isn't due (or another instance is mid-scan). Sits before
 		// the watchdog and telemetry.Run so a skipped wakeup posts no beacon,
@@ -310,7 +316,7 @@ func main() {
 		if telemetryErr != nil {
 			restoreTarget()
 			log.Error("%v", telemetryErr)
-			os.Exit(1)
+			os.Exit(telemetry.ExitCode(telemetryErr))
 		}
 		runHookStateReconcile(exec, log, cfg)
 		if targetOK {
@@ -433,7 +439,7 @@ func main() {
 			} else {
 				restoreTarget()
 				log.Error("%v", telemetryErr)
-				os.Exit(1)
+				os.Exit(telemetry.ExitCode(telemetryErr))
 			}
 		}
 		runHookStateReconcile(exec, log, cfg)
@@ -568,7 +574,7 @@ func main() {
 			restoreTarget()
 			if telemetryErr != nil {
 				log.Error("%v", telemetryErr)
-				os.Exit(1)
+				os.Exit(telemetry.ExitCode(telemetryErr))
 			}
 		default:
 			log.Debug("dispatch: community scan (default)")
